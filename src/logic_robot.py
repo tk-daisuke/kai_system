@@ -5,6 +5,7 @@ Excel操作、ダウンロード処理、ファイル監視を行う
 """
 
 import os
+import time
 import time as time_module
 import webbrowser
 from datetime import datetime, time
@@ -247,6 +248,23 @@ class TaskRunner:
         self.excel_handler = ExcelHandler()
         self.download_handler = DownloadHandler()
         self.progress_callback = progress_callback
+        self.stop_requested = False  # 中断フラグ
+        self.paused = False         # 一時停止フラグ
+
+    def request_stop(self):
+        """中断をリクエスト"""
+        self.stop_requested = True
+        logger.info("中断リクエストを受信しました")
+
+    def pause(self):
+        """一時停止"""
+        self.paused = True
+        logger.info("一時停止リクエスト: ON")
+
+    def resume(self):
+        """再開"""
+        self.paused = False
+        logger.info("一時停止リクエスト: OFF")
     
     def set_progress_callback(self, callback):
         """進捗コールバックを設定"""
@@ -378,12 +396,33 @@ class TaskRunner:
         """
         results = {"success": 0, "failed": 0, "skipped": 0}
         total_tasks = len(tasks)
+        self.stop_requested = False  # フラグ初期化
         
         mode_str = " (強制実行)" if force else ""
         logger.info(f"グループ実行開始{mode_str}: {total_tasks} 件のタスク")
         self._notify_progress(0, total_tasks, f"グループ実行{mode_str}: {total_tasks} 件")
         
         for i, task in enumerate(tasks, 1):
+            # 中断チェック
+            if self.stop_requested:
+                logger.warning("ユーザーにより中断されました")
+                self._notify_progress(i-1, total_tasks, "中断されました")
+                break
+            
+            # 一時停止待機ループ
+            while self.paused:
+                self._notify_progress(i-1, total_tasks, "一時停止中... (再開待ち)")
+                time.sleep(0.5)
+                # 待機中に中断指示が来ることも考慮
+                if self.stop_requested:
+                    break
+            
+            # 再度中断チェック（ループ抜け直後）
+            if self.stop_requested:
+                logger.warning("ユーザーにより中断されました")
+                self._notify_progress(i-1, total_tasks, "中断されました")
+                break
+                
             logger.info(f"=== タスク {i}/{total_tasks} ===")
             
             # run_task内でcheck_timeを呼ぶので、ここでの事前チェックは不要だが

@@ -211,6 +211,16 @@ class CoworkerBotGUI:
         left_frame = ttk.Frame(current_info_frame)
         left_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
+        # 一時停止ボタン（カウントの横に配置）
+        self.pause_btn = ttk.Button(
+            left_frame,
+            text="⏸ 一時停止",
+            width=10,
+            state="disabled",
+            command=self._on_pause_clicked
+        )
+        self.pause_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
         self.progress_count_var = tk.StringVar(value="待機中")
         progress_count_label = ttk.Label(
             left_frame,
@@ -412,8 +422,8 @@ class CoworkerBotGUI:
         self.root.update()
         
         # ボタンを無効化
-        for widget in self.button_frame.winfo_children():
-            widget.configure(state="disabled")
+        self._set_buttons_enabled(False)
+        self.pause_btn.configure(state="normal", text="⏸ 一時停止")
         
         try:
             # タスク取得
@@ -471,6 +481,7 @@ class CoworkerBotGUI:
         finally:
             # ボタンを有効化
             self._set_buttons_enabled(True)
+            self.pause_btn.configure(state="disabled", text="⏸ 一時停止")
     
     def _set_buttons_enabled(self, enabled: bool) -> None:
         """全ボタンの有効/無効を切り替え"""
@@ -498,6 +509,7 @@ class CoworkerBotGUI:
         self.root.update()
         
         self._set_buttons_enabled(False)
+        self.pause_btn.configure(state="normal", text="⏸ 一時停止")
         
         try:
             # 選択位置以降の全タスクを取得し、同じグループのみに絞る
@@ -520,6 +532,7 @@ class CoworkerBotGUI:
         
         finally:
             self._set_buttons_enabled(True)
+            self.stop_btn.configure(state="disabled")
     
     def _on_retry_only(self) -> None:
         """『このタスクのみ』ボタン - 選択したタスク単体を実行"""
@@ -538,6 +551,7 @@ class CoworkerBotGUI:
         self.root.update()
         
         self._set_buttons_enabled(False)
+        self.pause_btn.configure(state="normal", text="⏸ 一時停止")
         
         try:
             # 選択されたタスク単体
@@ -559,6 +573,7 @@ class CoworkerBotGUI:
         
         finally:
             self._set_buttons_enabled(True)
+            self.stop_btn.configure(state="disabled")
     
     def _show_results(self, label: str, results: dict) -> None:
         """タスク実行結果を表示"""
@@ -587,6 +602,22 @@ class CoworkerBotGUI:
         self.status_var.set("完了しました")
         self.detail_status_var.set("✓ 全タスク完了")
         self.progress_count_var.set("完了")
+    
+    def _on_pause_clicked(self) -> None:
+        """『一時停止/再開』ボタンクリック時の処理"""
+        # 現在の状態をチェック（ボタンのテキストで判断）
+        current_text = self.pause_btn.cget("text")
+        
+        if "一時停止" in current_text:
+            # 一時停止リクエスト
+            self.task_runner.pause()
+            self.pause_btn.configure(text="▶ 再開")
+            self.detail_status_var.set("⏸ 一時停止リクエスト中... (完了後に停止します)")
+        else:
+            # 再開リクエスト
+            self.task_runner.resume()
+            self.pause_btn.configure(text="⏸ 一時停止")
+            self.detail_status_var.set("▶ 再開します...")
     
     def run(self) -> None:
         """GUIメインループを開始"""
