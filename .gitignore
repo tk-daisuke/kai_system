@@ -40,7 +40,13 @@ test_csv/
 *.exe
 
 # Production config (Local)
+# Production config (Local)
+settings/production/
 settings/test/*.csv
+
+# Caches
+.pytest_cache/
+.mypy_cache/
 
 # Windows
 Thumbs.db
