@@ -1,0 +1,47 @@
+# Co-worker Bot .gitignore
+
+# 設計ドキュメント（機密）
+main.md
+MEMORY*.md
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+*.manifest
+*.spec
+
+# 仮想環境
+venv/
+.venv/
+ENV/
+
+# ログ
+logs/
+*.log
+
+# テスト用
+test_csv/
+*.csv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# exe
+*.exe
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# MacOS
+.DS_Store
