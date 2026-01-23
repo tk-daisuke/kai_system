@@ -5,11 +5,13 @@ TkinterによるGUI制御とタスクオーケストレーション
 """
 
 import sys
+import os
 import tkinter as tk
 from tkinter import ttk, scrolledtext
 from pathlib import Path
 from typing import List
 from datetime import datetime
+import webbrowser
 
 # srcフォルダをパスに追加
 if getattr(sys, 'frozen', False):
@@ -31,9 +33,10 @@ class CoworkerBotGUI:
     WINDOW_WIDTH = 550
     WINDOW_HEIGHT = 650
     
-    def __init__(self):
+    def __init__(self, env: str = "production"):
+        self.env = env
         self.root = tk.Tk()
-        self.root.title(self.WINDOW_TITLE)
+        self.root.title(f"{self.WINDOW_TITLE} ({self.env})")
         self.root.geometry(f"{self.WINDOW_WIDTH}x{self.WINDOW_HEIGHT}")
         self.root.resizable(False, False)
         
@@ -44,11 +47,12 @@ class CoworkerBotGUI:
         self._setup_styles()
         
         # コンポーネント初期化
-        self.config_loader = ConfigLoader()
+        self.config_loader = ConfigLoader(env=self.env)
         self.task_runner = TaskRunner()
         self.task_runner.set_progress_callback(self._on_progress_update)
         self.groups: List[str] = []
-        self.start_times: List = []  # StartTime一覧
+        self.groups: List[str] = []
+        self.all_tasks: List[TaskConfig] = []  # 全タスクリスト（ソート済み）
         
         # 進捗履歴
         self.history_entries: List[dict] = []
@@ -60,6 +64,42 @@ class CoworkerBotGUI:
         
         # セレクター読み込み
         self._load_selectors()
+
+        # 起動時のチェック（ブラウザ起動・警告）
+        self.root.after(500, self._startup_check)
+    
+    def _startup_check(self) -> None:
+        """起動時の警告とブラウザ起動を行う"""
+        # ブラウザを起動（ログインしてない場合のため）
+        # about:blank だと反応しない場合があるため、Googleを開く
+        target_url = "https://www.google.com"
+        browser_opened = False
+        
+        try:
+            # 方法1: os.startfile (Windows専用、最も確実)
+            if hasattr(os, 'startfile'):
+                os.startfile(target_url)
+                browser_opened = True
+            else:
+                # 方法2: webbrowserモジュール
+                import webbrowser
+                webbrowser.open(target_url)
+                browser_opened = True
+        except Exception as e:
+            logger.error(f"ブラウザ起動失敗: {e}")
+            # エラーでもポップアップは出す
+            
+        # 警告ダイアログを表示
+        message = (
+            "【実行前の重要なお知らせ】\n\n"
+            "1. 業務サイトへのログイン\n"
+            "   ブラウザが起動します。必要なサイトにログイン済みか確認してください。\n"
+            "   （ログインしていない場合、誤ったデータがダウンロードされる可能性があります）\n\n"
+            "2. クリップボードの使用禁止\n"
+            "   本ツールはコピー＆ペースト機能を使用します。\n"
+            "   実行中は他の作業で「コピー」や「貼り付け」を行わないでください。"
+        )
+        show_warning("実行前の確認", message)
     
     def _center_window(self) -> None:
         """ウィンドウを画面中央に配置"""
@@ -119,32 +159,32 @@ class CoworkerBotGUI:
         retry_inner = ttk.Frame(retry_frame)
         retry_inner.pack(fill=tk.X)
         
-        # StartTimeドロップダウン
-        ttk.Label(retry_inner, text="開始時刻:", font=("Yu Gothic UI", 10)).pack(side=tk.LEFT, padx=(0, 5))
+        # タスク選択ドロップダウン
+        ttk.Label(retry_inner, text="指定タスク:", font=("Yu Gothic UI", 10)).pack(side=tk.LEFT, padx=(0, 5))
         
-        self.start_time_var = tk.StringVar()
-        self.start_time_combo = ttk.Combobox(
+        self.task_selector_var = tk.StringVar()
+        self.task_selector = ttk.Combobox(
             retry_inner,
-            textvariable=self.start_time_var,
+            textvariable=self.task_selector_var,
             state="readonly",
-            width=10,
-            font=("Yu Gothic UI", 10)
+            width=40,
+            font=("Yu Gothic UI", 9)
         )
-        self.start_time_combo.pack(side=tk.LEFT, padx=(0, 10))
+        self.task_selector.pack(side=tk.LEFT, padx=(0, 10))
         
         # 「ここから実行」ボタン
         self.retry_btn = ttk.Button(
             retry_inner,
             text="ここから実行 ▶",
-            command=self._on_start_time_selected
+            command=self._on_retry_from_here
         )
         self.retry_btn.pack(side=tk.LEFT, padx=5)
         
-        # 「この時間のみ」ボタン
+        # 「このタスクのみ」ボタン
         self.only_btn = ttk.Button(
             retry_inner,
-            text="この時間のみ",
-            command=self._on_start_time_only
+            text="このタスクのみ",
+            command=self._on_retry_only
         )
         self.only_btn.pack(side=tk.LEFT, padx=5)
         
@@ -325,7 +365,7 @@ class CoworkerBotGUI:
         """グループボタンとStartTimeセレクターを読み込み"""
         try:
             self.groups = self.config_loader.get_groups()
-            self.start_times = self.config_loader.get_start_times()
+            self.all_tasks = self.config_loader.get_all_tasks_sorted()
             
             if not self.groups:
                 self.status_var.set("⚠ グループが見つかりません")
@@ -346,15 +386,18 @@ class CoworkerBotGUI:
                 )
                 btn.pack(side=tk.LEFT, padx=2, expand=True, fill=tk.X)
             
-            # StartTimeコンボボックスに値を設定
-            time_labels = [t.strftime("%H:%M") for t in self.start_times]
-            self.start_time_combo['values'] = time_labels
-            if time_labels:
-                self.start_time_combo.current(0)
+            # タスクコンボボックスに値を設定
+            task_labels = [
+                f"[{t.group}] {t.start_time_str()} - {Path(t.file_path).name}"
+                for t in self.all_tasks
+            ]
+            self.task_selector['values'] = task_labels
+            if task_labels:
+                self.task_selector.current(0)
             
-            self.status_var.set(f"{len(self.groups)} グループ / {len(self.start_times)} 時間帯")
-            self._add_history(f"起動完了: {len(self.groups)} グループ, {len(self.start_times)} 時間帯をロード", "info")
-            logger.info(f"GUI起動完了: {len(self.groups)} グループ, {len(self.start_times)} StartTimes")
+            self.status_var.set(f"{len(self.groups)} グループ / {len(self.all_tasks)} タスク")
+            self._add_history(f"起動完了: {len(self.groups)} グループ, {len(self.all_tasks)} タスクをロード", "info")
+            logger.info(f"GUI起動完了: {len(self.groups)} グループ, {len(self.all_tasks)} Tasks")
             
         except Exception as e:
             logger.error(f"データ読み込みエラー: {e}")
@@ -436,44 +479,38 @@ class CoworkerBotGUI:
             widget.configure(state=state)
         self.retry_btn.configure(state=state)
         self.only_btn.configure(state=state)
-        self.start_time_combo.configure(state="readonly" if enabled else "disabled")
+        self.task_selector.configure(state="readonly" if enabled else "disabled")
     
-    def _on_start_time_selected(self) -> None:
-        """『ここから実行』ボタン - 選択したStartTime以降のタスクを実行"""
-        selected_time_str = self.start_time_var.get()
-        if not selected_time_str:
-            show_warning(self.WINDOW_TITLE, "開始時刻を選択してください。")
+    def _on_retry_from_here(self) -> None:
+        """『ここから実行』ボタン - 選択したタスク以降を実行"""
+        idx = self.task_selector.current()
+        if idx < 0:
+            show_warning(self.WINDOW_TITLE, "タスクを選択してください。")
             return
+            
+        selected_task = self.all_tasks[idx]
+        task_label = f"[{selected_task.group}] {selected_task.start_time_str()} - {Path(selected_task.file_path).name}"
         
-        # 文字列からtime型に変換
-        parts = selected_time_str.split(":")
-        from datetime import time
-        selected_time = time(int(parts[0]), int(parts[1]))
-        
-        logger.info(f"StartTime選択（以降）: {selected_time_str}")
-        self.status_var.set(f"実行中: {selected_time_str}以降...")
+        logger.info(f"タスク選択（以降）: {task_label}")
+        self.status_var.set(f"実行中: {task_label} 以降...")
         self._reset_progress()
-        self._add_history(f"=== {selected_time_str}以降 のタスクを開始 ===", "info")
+        self._add_history(f"=== {task_label} 以降 のタスクを開始 ===", "info")
         self.root.update()
         
         self._set_buttons_enabled(False)
         
         try:
-            # 指定StartTime以降のタスクを取得
-            tasks = self.config_loader.get_tasks_from_start_time(selected_time)
+            # 選択位置以降の全タスクを取得し、同じグループのみに絞る
+            selected_group = selected_task.group
+            tasks = [t for t in self.all_tasks[idx:] if t.group == selected_group]
             
-            if not tasks:
-                show_warning(self.WINDOW_TITLE, f"'{selected_time_str}'以降にタスクがありません。")
-                self._add_history(f"{selected_time_str}以降: タスクなし", "skip")
-                return
+            self._add_history(f"{len(tasks)} 件のタスクを実行します (グループ: {selected_group})", "info")
             
-            self._add_history(f"{len(tasks)} 件のタスクを実行します", "info")
-            
-            # タスク実行
-            results = self.task_runner.run_group(tasks)
+            # タスク実行（強制実行モード）
+            results = self.task_runner.run_group(tasks, force=True)
             
             # 結果表示
-            self._show_results(f"{selected_time_str}以降", results)
+            self._show_results(f"{selected_group} の {task_label} 以降", results)
             
         except Exception as e:
             logger.error(f"タスク実行エラー: {e}")
@@ -484,42 +521,35 @@ class CoworkerBotGUI:
         finally:
             self._set_buttons_enabled(True)
     
-    def _on_start_time_only(self) -> None:
-        """『この時間のみ』ボタン - 選択したStartTimeのタスクのみ実行"""
-        selected_time_str = self.start_time_var.get()
-        if not selected_time_str:
-            show_warning(self.WINDOW_TITLE, "開始時刻を選択してください。")
+    def _on_retry_only(self) -> None:
+        """『このタスクのみ』ボタン - 選択したタスク単体を実行"""
+        idx = self.task_selector.current()
+        if idx < 0:
+            show_warning(self.WINDOW_TITLE, "タスクを選択してください。")
             return
+            
+        selected_task = self.all_tasks[idx]
+        task_label = f"[{selected_task.group}] {selected_task.start_time_str()} - {Path(selected_task.file_path).name}"
         
-        # 文字列からtime型に変換
-        parts = selected_time_str.split(":")
-        from datetime import time
-        selected_time = time(int(parts[0]), int(parts[1]))
-        
-        logger.info(f"StartTime選択（のみ）: {selected_time_str}")
-        self.status_var.set(f"実行中: {selected_time_str}のみ...")
+        logger.info(f"タスク選択（のみ）: {task_label}")
+        self.status_var.set(f"実行中: {task_label} のみ...")
         self._reset_progress()
-        self._add_history(f"=== {selected_time_str} のタスクを開始 ===", "info")
+        self._add_history(f"=== {task_label} を開始 ===", "info")
         self.root.update()
         
         self._set_buttons_enabled(False)
         
         try:
-            # 指定StartTimeのタスクのみを取得
-            tasks = self.config_loader.get_tasks_by_start_time(selected_time)
+            # 選択されたタスク単体
+            tasks = [selected_task]
             
-            if not tasks:
-                show_warning(self.WINDOW_TITLE, f"'{selected_time_str}'のタスクがありません。")
-                self._add_history(f"{selected_time_str}: タスクなし", "skip")
-                return
+            self._add_history(f"単独タスクを実行します", "info")
             
-            self._add_history(f"{len(tasks)} 件のタスクを実行します", "info")
-            
-            # タスク実行
-            results = self.task_runner.run_group(tasks)
+            # タスク実行（強制実行モード）
+            results = self.task_runner.run_group(tasks, force=True)
             
             # 結果表示
-            self._show_results(f"{selected_time_str}", results)
+            self._show_results(f"{task_label}", results)
             
         except Exception as e:
             logger.error(f"タスク実行エラー: {e}")
@@ -567,8 +597,13 @@ class CoworkerBotGUI:
 
 def main():
     """エントリーポイント"""
+    import argparse
+    parser = argparse.ArgumentParser(description="Co-worker Bot")
+    parser.add_argument("--env", choices=["production", "test"], default="production", help="実行環境 (production/test)")
+    args = parser.parse_args()
+    
     try:
-        app = CoworkerBotGUI()
+        app = CoworkerBotGUI(env=args.env)
         app.run()
     except Exception as e:
         logger.error(f"致命的なエラー: {e}")

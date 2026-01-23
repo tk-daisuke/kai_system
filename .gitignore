@@ -39,9 +39,19 @@ test_csv/
 # exe
 *.exe
 
+# Production config (Local)
+settings/test/*.csv
+
 # Windows
 Thumbs.db
 Desktop.ini
 
 # MacOS
 .DS_Store
+
+# Temporary
+temp_test_downloads/
+error_log.txt
+error_log_utf8.txt
+test_result.txt
+*.bak

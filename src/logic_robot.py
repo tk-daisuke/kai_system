@@ -257,18 +257,20 @@ class TaskRunner:
         if self.progress_callback:
             self.progress_callback(current, total, message)
     
-    def check_time(self, task: TaskConfig) -> bool:
-        """現在時刻がタスクの開始可能時刻以降かチェック"""
-        now = datetime.now().time()
-        if now < task.start_time:
-            logger.skip(
-                f"時間外のためスキップ: {task.group} "
-                f"(現在: {now.strftime('%H:%M')}, 開始可能: {task.start_time.strftime('%H:%M')})"
-            )
-            return False
-        return True
+    def check_time(self, task: TaskConfig, force: bool = False) -> bool:
+        """実行可能時間かチェックする"""
+        if force:
+            logger.info(f"強制実行モード: 時間チェックをスキップ ({task.start_time_str()})")
+            return True
+            
+        now = datetime.now()
+        if task.is_within_session(now):
+            return True
+        
+        logger.warning(f"スキップ: 実行可能時間外です ({task.start_time.strftime('%H:%M')} - {task.end_time.strftime('%H:%M')})")
+        return False
     
-    def run_task(self, task: TaskConfig, task_num: int = 1, total_tasks: int = 1) -> bool:
+    def run_task(self, task: TaskConfig, task_num: int = 1, total_tasks: int = 1, force: bool = False) -> bool:
         """
         単一タスクを実行
         
@@ -276,6 +278,7 @@ class TaskRunner:
             task: 実行するタスク設定
             task_num: 現在のタスク番号
             total_tasks: 総タスク数
+            force: 時間チェックをスキップするか
             
         Returns:
             成功した場合True
@@ -285,7 +288,7 @@ class TaskRunner:
         logger.info(f"タスク開始: {task.file_path}")
         
         # 時刻チェック
-        if not self.check_time(task):
+        if not self.check_time(task, force):
             return False
         
         try:
@@ -362,12 +365,13 @@ class TaskRunner:
             self.excel_handler.quit_excel()
             return False
     
-    def run_group(self, tasks: List[TaskConfig]) -> dict:
+    def run_group(self, tasks: List[TaskConfig], force: bool = False) -> dict:
         """
         グループ内の全タスクを順次実行
         
         Args:
             tasks: 実行するタスクのリスト
+            force: 時間チェックをスキップするか
             
         Returns:
             実行結果の辞書 {"success": int, "failed": int, "skipped": int}
@@ -375,18 +379,24 @@ class TaskRunner:
         results = {"success": 0, "failed": 0, "skipped": 0}
         total_tasks = len(tasks)
         
-        logger.info(f"グループ実行開始: {total_tasks} 件のタスク")
-        self._notify_progress(0, total_tasks, f"グループ実行開始: {total_tasks} 件のタスク")
+        mode_str = " (強制実行)" if force else ""
+        logger.info(f"グループ実行開始{mode_str}: {total_tasks} 件のタスク")
+        self._notify_progress(0, total_tasks, f"グループ実行{mode_str}: {total_tasks} 件")
         
         for i, task in enumerate(tasks, 1):
             logger.info(f"=== タスク {i}/{total_tasks} ===")
             
-            if not self.check_time(task):
+            # run_task内でcheck_timeを呼ぶので、ここでの事前チェックは不要だが
+            # スキップカウントのために明示的に呼ぶか、run_taskに任せるか。
+            # run_taskがFalseを返した場合、失敗かスキップか区別がつかないため、
+            # ここで判定するのが安全。
+            
+            if not self.check_time(task, force):
                 results["skipped"] += 1
                 self._notify_progress(i, total_tasks, f"スキップ: {Path(task.file_path).name}")
                 continue
             
-            if self.run_task(task, i, total_tasks):
+            if self.run_task(task, i, total_tasks, force):
                 results["success"] += 1
             else:
                 results["failed"] += 1

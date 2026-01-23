@@ -23,11 +23,25 @@ class TaskConfig:
     search_key: str
     download_url: str
     action_after: str  # "Save" or "Pause"
+    action_after: str  # "Save" or "Pause"
     active: bool
+    end_time: time
     
     def start_time_str(self) -> str:
         """StartTimeを文字列で返す（HH:MM形式）"""
         return self.start_time.strftime("%H:%M")
+
+    def is_within_session(self, current_time: datetime) -> bool:
+        """現在時刻が実行可能セッション内か判定する（深夜またぎ対応）"""
+        now_time = current_time.time()
+        
+        # StartTime <= EndTime の場合（通常の時間帯：08:00 - 17:00など）
+        if self.start_time <= self.end_time:
+            return self.start_time <= now_time <= self.end_time
+        
+        # StartTime > EndTime の場合（深夜またぎ：22:00 - 05:00など）
+        # 「StartTime以降」または「EndTime以前」であればセッション内
+        return now_time >= self.start_time or now_time <= self.end_time
     
     @classmethod
     def from_row(cls, row: pd.Series) -> "TaskConfig":
@@ -43,6 +57,26 @@ class TaskConfig:
             start_time = time(start_time_val.hour, start_time_val.minute)
         else:
             start_time = time(0, 0)
+            
+        # EndTimeの変換
+        end_time_val = row.get("EndTime")
+        if pd.isna(end_time_val) or end_time_val == "":
+            # EndTimeがない場合はStartTimeの8時間後に設定（日付またぎ考慮）
+            dummy_dt = datetime.combine(datetime.today(), start_time)
+            from datetime import timedelta
+            end_dt = dummy_dt + timedelta(hours=8)
+            end_time = end_dt.time()
+        elif isinstance(end_time_val, str):
+            parts = end_time_val.split(":")
+            end_time = time(int(parts[0]), int(parts[1]) if len(parts) > 1 else 0)
+        elif hasattr(end_time_val, 'hour'):
+            end_time = time(end_time_val.hour, end_time_val.minute)
+        else:
+            # フォールバック
+            dummy_dt = datetime.combine(datetime.today(), start_time)
+            from datetime import timedelta
+            end_dt = dummy_dt + timedelta(hours=8)
+            end_time = end_dt.time()
         
         return cls(
             group=str(row.get("Group", "")),
@@ -52,7 +86,8 @@ class TaskConfig:
             search_key=str(row.get("SearchKey", "")),
             download_url=str(row.get("DownloadURL", "")),
             action_after=str(row.get("ActionAfter", "Save")),
-            active=bool(row.get("Active", False))
+            active=bool(row.get("Active", False)),
+            end_time=end_time
         )
 
 
@@ -62,10 +97,11 @@ class ConfigLoader:
     DEFAULT_MASTER_FILE = "Task_Master.xlsx"
     SHEET_NAME = "TaskList"
     
-    def __init__(self, master_path: Optional[Path] = None):
+    def __init__(self, master_path: Optional[Path] = None, env: str = "production"):
         """
         Args:
-            master_path: マスタファイルのパス。Noneの場合は同階層から読み込む
+            master_path: マスタファイルのパス。Noneの場合は環境に応じたデフォルトパスを使用
+            env: 実行環境 ("production" or "test")。master_pathが指定されていない場合に使用
         """
         if master_path is None:
             # 実行ファイルと同階層のsettingsフォルダを探す
@@ -75,7 +111,21 @@ class ConfigLoader:
             else:
                 base_path = Path(__file__).parent.parent
             
-            self.master_path = base_path / "settings" / self.DEFAULT_MASTER_FILE
+            # 環境に応じたサブフォルダを選択
+             # デフォルトは production（本番）
+            if env == "test":
+                sub_folder = "test"
+            else:
+                sub_folder = "production"
+                
+            self.master_path = base_path / "settings" / sub_folder / self.DEFAULT_MASTER_FILE
+            
+            # フォールバック: 指定環境になく、直下にある場合（旧仕様互換）
+            if not self.master_path.exists():
+                fallback_path = base_path / "settings" / self.DEFAULT_MASTER_FILE
+                if fallback_path.exists():
+                    self.master_path = fallback_path
+                    
         else:
             self.master_path = Path(master_path)
     
@@ -174,6 +224,16 @@ class ConfigLoader:
         tasks = self.load_tasks()
         filtered = [t for t in tasks if t.start_time >= start_time]
         return sorted(filtered, key=lambda t: t.start_time)
+
+    def get_all_tasks_sorted(self) -> List[TaskConfig]:
+        """
+        全タスクを時刻順にソートして取得
+        
+        Returns:
+            時刻順のTaskConfigリスト
+        """
+        tasks = self.load_tasks()
+        return sorted(tasks, key=lambda t: (t.start_time, t.group))
 
 
 # テスト用
