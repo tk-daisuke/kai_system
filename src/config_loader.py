@@ -48,31 +48,48 @@ class TaskConfig:
         """DataFrameの行からTaskConfigを生成"""
         # StartTimeの変換
         start_time_val = row.get("StartTime", "00:00")
-        if pd.isna(start_time_val):
-            start_time = time(0, 0)
-        elif isinstance(start_time_val, str):
-            parts = start_time_val.split(":")
-            start_time = time(int(parts[0]), int(parts[1]) if len(parts) > 1 else 0)
-        elif hasattr(start_time_val, 'hour'):
-            start_time = time(start_time_val.hour, start_time_val.minute)
-        else:
+        start_time = time(0, 0)
+        
+        try:
+            if pd.isna(start_time_val):
+                start_time = time(0, 0)
+            elif isinstance(start_time_val, str):
+                # "9:00", "09:00", "9", "09" などに対応
+                parts = start_time_val.replace(";", ":").split(":")
+                hour = int(parts[0])
+                minute = int(parts[1]) if len(parts) > 1 else 0
+                # 時刻の範囲チェック
+                hour = max(0, min(23, hour))
+                minute = max(0, min(59, minute))
+                start_time = time(hour, minute)
+            elif hasattr(start_time_val, 'hour'):
+                start_time = time(start_time_val.hour, start_time_val.minute)
+        except Exception as e:
+            logger.warning(f"StartTimeのパースに失敗しました (値: {start_time_val}): {e} -> 00:00とします")
             start_time = time(0, 0)
             
         # EndTimeの変換
         end_time_val = row.get("EndTime")
-        if pd.isna(end_time_val) or end_time_val == "":
-            # EndTimeがない場合はStartTimeの8時間後に設定（日付またぎ考慮）
-            dummy_dt = datetime.combine(datetime.today(), start_time)
-            from datetime import timedelta
-            end_dt = dummy_dt + timedelta(hours=8)
-            end_time = end_dt.time()
-        elif isinstance(end_time_val, str):
-            parts = end_time_val.split(":")
-            end_time = time(int(parts[0]), int(parts[1]) if len(parts) > 1 else 0)
-        elif hasattr(end_time_val, 'hour'):
-            end_time = time(end_time_val.hour, end_time_val.minute)
-        else:
-            # フォールバック
+        end_time = None
+        
+        try:
+            if not (pd.isna(end_time_val) or end_time_val == ""):
+                if isinstance(end_time_val, str):
+                    parts = end_time_val.replace(";", ":").split(":")
+                    hour = int(parts[0])
+                    minute = int(parts[1]) if len(parts) > 1 else 0
+                    # 時刻の範囲チェック
+                    hour = max(0, min(23, hour))
+                    minute = max(0, min(59, minute))
+                    end_time = time(hour, minute)
+                elif hasattr(end_time_val, 'hour'):
+                    end_time = time(end_time_val.hour, end_time_val.minute)
+        except Exception as e:
+            logger.warning(f"EndTimeのパースに失敗しました (値: {end_time_val}): {e} -> 自動設定を使用します")
+            end_time = None
+
+        if end_time is None:
+            # EndTimeがない、またはエラーの場合はStartTimeの8時間後に設定（日付またぎ考慮）
             dummy_dt = datetime.combine(datetime.today(), start_time)
             from datetime import timedelta
             end_dt = dummy_dt + timedelta(hours=8)
