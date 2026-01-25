@@ -51,7 +51,6 @@ class CoworkerBotGUI:
         self.task_runner = TaskRunner()
         self.task_runner.set_progress_callback(self._on_progress_update)
         self.groups: List[str] = []
-        self.groups: List[str] = []
         self.all_tasks: List[TaskConfig] = []  # 全タスクリスト（ソート済み）
         
         # 進捗履歴
@@ -532,7 +531,7 @@ class CoworkerBotGUI:
         
         finally:
             self._set_buttons_enabled(True)
-            self.stop_btn.configure(state="disabled")
+            self.pause_btn.configure(state="disabled")
     
     def _on_retry_only(self) -> None:
         """『このタスクのみ』ボタン - 選択したタスク単体を実行"""
@@ -573,7 +572,7 @@ class CoworkerBotGUI:
         
         finally:
             self._set_buttons_enabled(True)
-            self.stop_btn.configure(state="disabled")
+            self.pause_btn.configure(state="disabled")
     
     def _show_results(self, label: str, results: dict) -> None:
         """タスク実行結果を表示"""

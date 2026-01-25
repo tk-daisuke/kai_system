@@ -108,7 +108,7 @@ class TaskConfig:
             active=bool(row.get("Active", False)),
             end_time=end_time,
             skip_download=bool(row.get("SkipDownload", False)),
-            keep_open=bool(row.get("KeepOpen", False)),
+            close_after=bool(row.get("CloseAfter", False)),
             popup_message=str(row.get("PopupMessage", "") if not pd.isna(row.get("PopupMessage")) else "")
         )
 

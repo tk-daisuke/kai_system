@@ -4,8 +4,6 @@ Co-worker Bot - ロボットロジックモジュール
 Excel操作、ダウンロード処理、ファイル監視を行う
 """
 
-import os
-import time
 import time as time_module
 import webbrowser
 from datetime import datetime, time
@@ -250,7 +248,7 @@ class TaskRunner:
         self.progress_callback = progress_callback
         self.stop_requested = False  # 中断フラグ
         self.paused = False         # 一時停止フラグ
-        self.current_workbook_path = None  # 現在開いているワークブックのパス（keep_open用）
+        self.current_workbook_path = None  # 現在開いているワークブックのパス（close_after用）
 
     def request_stop(self):
         """中断をリクエスト"""
@@ -316,7 +314,7 @@ class TaskRunner:
             if not self.excel_handler.start_excel(visible=True):
                 return False
             
-            # ワークブックを開く（keep_open対応: 同じファイルなら再利用）
+            # ワークブックを開く（close_after対応: 同じファイルなら再利用）
             need_open_workbook = True
             if self.current_workbook_path == task.file_path and self.excel_handler.workbook is not None:
                 # 同じファイルが既に開いている
@@ -343,7 +341,7 @@ class TaskRunner:
                 # ダウンロードをトリガー
                 self._notify_progress(task_num, total_tasks, f"ダウンロード中: {task.search_key}")
                 if not self.download_handler.trigger_download(task.download_url):
-                    if not task.keep_open:
+                    if task.close_after:
                         self.excel_handler.close_workbook()
                         self.excel_handler.quit_excel()
                         self.current_workbook_path = None
@@ -354,7 +352,7 @@ class TaskRunner:
                 csv_path = self.download_handler.wait_for_download(task.search_key)
                 if csv_path is None:
                     logger.error("ダウンロードに失敗しました")
-                    if not task.keep_open:
+                    if task.close_after:
                         self.excel_handler.close_workbook()
                         self.excel_handler.quit_excel()
                         self.current_workbook_path = None
@@ -363,7 +361,7 @@ class TaskRunner:
                 # データ貼り付け
                 self._notify_progress(task_num, total_tasks, f"データ転記中: {task.target_sheet}")
                 if not self.excel_handler.paste_data_to_sheet(task.target_sheet, csv_path):
-                    if not task.keep_open:
+                    if task.close_after:
                         self.excel_handler.close_workbook()
                         self.excel_handler.quit_excel()
                         self.current_workbook_path = None
@@ -401,8 +399,8 @@ class TaskRunner:
                 self._notify_progress(task_num, total_tasks, f"保存中: {file_name}")
                 self.excel_handler.save_workbook()
             
-            # ワークブックを閉じる（keep_openでない場合）
-            if not task.keep_open:
+            # ワークブックを閉じる（close_afterの場合）
+            if task.close_after:
                 self.excel_handler.close_workbook()
                 self.excel_handler.quit_excel()
                 self.current_workbook_path = None
@@ -415,7 +413,7 @@ class TaskRunner:
             
         except Exception as e:
             logger.error(f"タスク実行エラー: {e}")
-            if not task.keep_open:
+            if task.close_after:
                 self.excel_handler.close_workbook()
                 self.excel_handler.quit_excel()
                 self.current_workbook_path = None
@@ -478,7 +476,7 @@ class TaskRunner:
             else:
                 results["failed"] += 1
         
-        # グループ終了時のクリーンアップ（keep_openで開いたままのワークブックを閉じる）
+        # グループ終了時のクリーンアップ（開いたままのワークブックを閉じる）
         if self.excel_handler.workbook is not None:
             logger.info("グループ終了時にワークブックを閉じます")
             self.excel_handler.close_workbook(save=False)
