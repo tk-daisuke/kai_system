@@ -23,9 +23,11 @@ class TaskConfig:
     search_key: str
     download_url: str
     action_after: str  # "Save" or "Pause"
-    action_after: str  # "Save" or "Pause"
     active: bool
     end_time: time
+    skip_download: bool = False   # ダウンロードをスキップ（ファイルを開くのみ）
+    close_after: bool = False      # TRUEでタスク完了後にファイルを閉じる（デフォルトは開いたまま）
+    popup_message: str = ""        # カスタムポップアップメッセージ
     
     def start_time_str(self) -> str:
         """StartTimeを文字列で返す（HH:MM形式）"""
@@ -104,7 +106,10 @@ class TaskConfig:
             download_url=str(row.get("DownloadURL", "")),
             action_after=str(row.get("ActionAfter", "Save")),
             active=bool(row.get("Active", False)),
-            end_time=end_time
+            end_time=end_time,
+            skip_download=bool(row.get("SkipDownload", False)),
+            keep_open=bool(row.get("KeepOpen", False)),
+            popup_message=str(row.get("PopupMessage", "") if not pd.isna(row.get("PopupMessage")) else "")
         )
 
 

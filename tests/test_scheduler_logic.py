@@ -18,7 +18,8 @@ class TestTaskConfig(unittest.TestCase):
         task = TaskConfig(
             group="Test", start_time=time(9, 0), end_time=time(17, 0),
             file_path="", target_sheet="", search_key="", download_url="",
-            action_after="", active=True
+            action_after="", active=True,
+            skip_download=False, keep_open=False, popup_message=""
         )
         
         # 範囲内
@@ -36,7 +37,8 @@ class TestTaskConfig(unittest.TestCase):
         task = TaskConfig(
             group="Test", start_time=time(22, 0), end_time=time(5, 0),
             file_path="", target_sheet="", search_key="", download_url="",
-            action_after="", active=True
+            action_after="", active=True,
+            skip_download=False, keep_open=False, popup_message=""
         )
         
         # 範囲内

@@ -250,6 +250,7 @@ class TaskRunner:
         self.progress_callback = progress_callback
         self.stop_requested = False  # 中断フラグ
         self.paused = False         # 一時停止フラグ
+        self.current_workbook_path = None  # 現在開いているワークブックのパス（keep_open用）
 
     def request_stop(self):
         """中断をリクエスト"""
@@ -310,58 +311,89 @@ class TaskRunner:
             return False
         
         try:
-            # Excel起動
+            # Excel起動（既に起動済みの場合は再利用）
             self._notify_progress(task_num, total_tasks, f"Excel起動中: {file_name}")
             if not self.excel_handler.start_excel(visible=True):
                 return False
             
-            # ワークブックを開く（動的URL再計算のため）
-            self._notify_progress(task_num, total_tasks, f"ファイルを開いています: {file_name}")
-            if not self.excel_handler.open_workbook(task.file_path):
-                self.excel_handler.quit_excel()
-                return False
+            # ワークブックを開く（keep_open対応: 同じファイルなら再利用）
+            need_open_workbook = True
+            if self.current_workbook_path == task.file_path and self.excel_handler.workbook is not None:
+                # 同じファイルが既に開いている
+                logger.info(f"ワークブックを再利用します: {file_name}")
+                need_open_workbook = False
+            else:
+                # 前のワークブックが開いていれば閉じる
+                if self.excel_handler.workbook is not None:
+                    self.excel_handler.close_workbook(save=False)
             
-            # 既存CSVの削除
-            self.download_handler.cleanup_existing_csv(task.search_key)
+            if need_open_workbook:
+                self._notify_progress(task_num, total_tasks, f"ファイルを開いています: {file_name}")
+                if not self.excel_handler.open_workbook(task.file_path):
+                    self.excel_handler.quit_excel()
+                    return False
+                self.current_workbook_path = task.file_path
             
-            # ダウンロードをトリガー
-            self._notify_progress(task_num, total_tasks, f"ダウンロード中: {task.search_key}")
-            if not self.download_handler.trigger_download(task.download_url):
-                self.excel_handler.close_workbook()
-                self.excel_handler.quit_excel()
-                return False
-            
-            # ダウンロード待機
-            self._notify_progress(task_num, total_tasks, f"ダウンロード待機中: {task.search_key}")
-            csv_path = self.download_handler.wait_for_download(task.search_key)
-            if csv_path is None:
-                logger.error("ダウンロードに失敗しました")
-                self.excel_handler.close_workbook()
-                self.excel_handler.quit_excel()
-                return False
-            
-            # データ貼り付け
-            self._notify_progress(task_num, total_tasks, f"データ転記中: {task.target_sheet}")
-            if not self.excel_handler.paste_data_to_sheet(task.target_sheet, csv_path):
-                self.excel_handler.close_workbook()
-                self.excel_handler.quit_excel()
+            # ダウンロード処理（skip_downloadがFalseの場合のみ）
+            csv_path = None
+            if not task.skip_download:
+                # 既存CSVの削除
+                self.download_handler.cleanup_existing_csv(task.search_key)
+                
+                # ダウンロードをトリガー
+                self._notify_progress(task_num, total_tasks, f"ダウンロード中: {task.search_key}")
+                if not self.download_handler.trigger_download(task.download_url):
+                    if not task.keep_open:
+                        self.excel_handler.close_workbook()
+                        self.excel_handler.quit_excel()
+                        self.current_workbook_path = None
+                    return False
+                
+                # ダウンロード待機
+                self._notify_progress(task_num, total_tasks, f"ダウンロード待機中: {task.search_key}")
+                csv_path = self.download_handler.wait_for_download(task.search_key)
+                if csv_path is None:
+                    logger.error("ダウンロードに失敗しました")
+                    if not task.keep_open:
+                        self.excel_handler.close_workbook()
+                        self.excel_handler.quit_excel()
+                        self.current_workbook_path = None
+                    return False
+                
+                # データ貼り付け
+                self._notify_progress(task_num, total_tasks, f"データ転記中: {task.target_sheet}")
+                if not self.excel_handler.paste_data_to_sheet(task.target_sheet, csv_path):
+                    if not task.keep_open:
+                        self.excel_handler.close_workbook()
+                        self.excel_handler.quit_excel()
+                        self.current_workbook_path = None
+                    safe_delete_file(csv_path)
+                    return False
+                
+                # CSVを削除
                 safe_delete_file(csv_path)
-                return False
-            
-            # CSVを削除
-            safe_delete_file(csv_path)
+            else:
+                # ダウンロードスキップ時はファイルを開くのみ
+                logger.info(f"ダウンロードをスキップしました: {file_name}")
+                self._notify_progress(task_num, total_tasks, f"ファイルを開きました: {file_name}")
             
             # ActionAfter処理
             if task.action_after.upper() == "PAUSE":
                 # 一時停止してユーザーに手動作業を促す
                 self._notify_progress(task_num, total_tasks, f"手動作業待ち: {file_name}")
-                show_info(
-                    "Co-worker Bot - 手動作業",
-                    f"手動作業を行ってください。\n\n"
-                    f"ファイル: {task.file_path}\n"
-                    f"シート: {task.target_sheet}\n\n"
-                    f"作業完了後、OKを押してください。"
-                )
+                
+                # カスタムポップアップメッセージがあれば使用
+                if task.popup_message:
+                    popup_msg = task.popup_message
+                else:
+                    popup_msg = (
+                        f"手動作業を行ってください。\n\n"
+                        f"ファイル: {task.file_path}\n"
+                        f"シート: {task.target_sheet}\n\n"
+                        f"作業完了後、OKを押してください。"
+                    )
+                show_info("Co-worker Bot - 手動作業", popup_msg)
+                
                 # OK押下後に保存
                 self.excel_handler.save_workbook()
             else:
@@ -369,9 +401,13 @@ class TaskRunner:
                 self._notify_progress(task_num, total_tasks, f"保存中: {file_name}")
                 self.excel_handler.save_workbook()
             
-            # ワークブックを閉じる
-            self.excel_handler.close_workbook()
-            self.excel_handler.quit_excel()
+            # ワークブックを閉じる（keep_openでない場合）
+            if not task.keep_open:
+                self.excel_handler.close_workbook()
+                self.excel_handler.quit_excel()
+                self.current_workbook_path = None
+            else:
+                logger.info(f"ワークブックを開いたままにします: {file_name}")
             
             self._notify_progress(task_num, total_tasks, f"完了: {file_name}")
             logger.success(f"タスク完了: {task.file_path}")
@@ -379,8 +415,10 @@ class TaskRunner:
             
         except Exception as e:
             logger.error(f"タスク実行エラー: {e}")
-            self.excel_handler.close_workbook()
-            self.excel_handler.quit_excel()
+            if not task.keep_open:
+                self.excel_handler.close_workbook()
+                self.excel_handler.quit_excel()
+                self.current_workbook_path = None
             return False
     
     def run_group(self, tasks: List[TaskConfig], force: bool = False) -> dict:
@@ -412,7 +450,7 @@ class TaskRunner:
             # 一時停止待機ループ
             while self.paused:
                 self._notify_progress(i-1, total_tasks, "一時停止中... (再開待ち)")
-                time.sleep(0.5)
+                time_module.sleep(0.5)
                 # 待機中に中断指示が来ることも考慮
                 if self.stop_requested:
                     break
@@ -439,6 +477,13 @@ class TaskRunner:
                 results["success"] += 1
             else:
                 results["failed"] += 1
+        
+        # グループ終了時のクリーンアップ（keep_openで開いたままのワークブックを閉じる）
+        if self.excel_handler.workbook is not None:
+            logger.info("グループ終了時にワークブックを閉じます")
+            self.excel_handler.close_workbook(save=False)
+            self.excel_handler.quit_excel()
+            self.current_workbook_path = None
         
         self._notify_progress(total_tasks, total_tasks, "全タスク完了")
         logger.info(
