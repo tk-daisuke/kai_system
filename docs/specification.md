@@ -77,7 +77,7 @@ Root/
 - **開始時刻** (`StartTime`): Execution start time (HH:MM)
 - **終了時刻** (`EndTime`): Execution end time (HH:MM)
 - **ファイルパス** (`FilePath`): Path to target Excel file
-- **転記シート** (`TargetSheet`): Destination sheet name
+- **CSV転記シート** (`TargetSheet`): Destination sheet name
 - **ダウンロードURL** (`DownloadURL`): Source URL for CSV
 - **検索キー** (`SearchKey`): Keyword to find downloaded CSV
 - **完了後動作** (`ActionAfter`): 'Save' or 'Pause'

@@ -112,7 +112,7 @@ class TaskConfig:
         # 各値の取得（日本語優先）
         group = str(get_val(["グループ", "Group"], ""))
         file_path = str(get_val(["ファイルパス", "ファイル", "FilePath"], ""))
-        target_sheet = str(get_val(["転記シート", "シート", "TargetSheet"], ""))
+        target_sheet = str(get_val(["CSV転記シート", "転記シート", "シート", "TargetSheet"], ""))
         search_key = str(get_val(["検索キー", "キーワード", "SearchKey"], ""))
         download_url = str(get_val(["URL", "ダウンロードURL", "DownloadURL"], ""))
         action_after = str(get_val(["完了後動作", "動作", "ActionAfter"], "Save"))

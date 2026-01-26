@@ -22,10 +22,26 @@ pip install -r requirements.txt
 ```
 
 ---
+ 
+ ## 2. 設定ファイルの構造 (Task_Master.xlsx)
+ 
+ 設定ファイルは日本語・英語の両方の列名をサポートしています（`src/config_loader.py` でマッピング）。
+ 
+ ### 主な設定項目
+ - **Active / 有効**: タスクの有効化フラグ
+ - **Group / グループ**: 実行グループ名
+ - **StartTime / 開始時刻**: 実行開始時間
+ - **FilePath / ファイルパス**: 対象Excelファイルのパス
+ - **TargetSheet / CSV転記シート**: データ転記先シート名
+ - **MacroName / マクロ名**: 実行するVBAマクロ名 (New!)
+ 
+ ※ 詳細は `SETTINGS_GUIDE.md` または `docs/user_manual.md` を参照してください。
+ 
+ ---
+ 
+ ## 3. アプリケーションの実行
 
-## 2. アプリケーションの実行
-
-### 2-1. 本番設定での実行
+### 3-1. 本番設定での実行
 ```powershell
 python src/main.py
 ```
