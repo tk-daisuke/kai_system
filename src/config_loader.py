@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from datetime import time, datetime
 
 from utils import logger
+import win32com.client
+import pythoncom
 
 
 @dataclass
@@ -28,6 +30,7 @@ class TaskConfig:
     skip_download: bool = False   # ダウンロードをスキップ（ファイルを開くのみ）
     close_after: bool = False      # TRUEでタスク完了後にファイルを閉じる（デフォルトは開いたまま）
     popup_message: str = ""        # カスタムポップアップメッセージ
+    macro_name: str = ""           # 実行するVBAマクロ名
     
     def start_time_str(self) -> str:
         """StartTimeを文字列で返す（HH:MM形式）"""
@@ -48,8 +51,17 @@ class TaskConfig:
     @classmethod
     def from_row(cls, row: pd.Series) -> "TaskConfig":
         """DataFrameの行からTaskConfigを生成"""
+        
+        # カラム名のエイリアス定義（英語と日本語のゆれ対応）
+        def get_val(keys: List[str], default: Any = None) -> Any:
+            for key in keys:
+                if key in row:
+                    return row[key]
+            return default
+
         # StartTimeの変換
-        start_time_val = row.get("StartTime", "00:00")
+        # 日本語ヘッダーを優先
+        start_time_val = get_val(["開始時刻", "開始", "StartTime"], "00:00")
         start_time = time(0, 0)
         
         try:
@@ -71,7 +83,7 @@ class TaskConfig:
             start_time = time(0, 0)
             
         # EndTimeの変換
-        end_time_val = row.get("EndTime")
+        end_time_val = get_val(["終了時刻", "終了", "EndTime"])
         end_time = None
         
         try:
@@ -97,19 +109,42 @@ class TaskConfig:
             end_dt = dummy_dt + timedelta(hours=8)
             end_time = end_dt.time()
         
+        # 各値の取得（日本語優先）
+        group = str(get_val(["グループ", "Group"], ""))
+        file_path = str(get_val(["ファイルパス", "ファイル", "FilePath"], ""))
+        target_sheet = str(get_val(["転記シート", "シート", "TargetSheet"], ""))
+        search_key = str(get_val(["検索キー", "キーワード", "SearchKey"], ""))
+        download_url = str(get_val(["URL", "ダウンロードURL", "DownloadURL"], ""))
+        action_after = str(get_val(["完了後動作", "動作", "ActionAfter"], "Save"))
+        
+        # Active (True/False or 1/0 or 有効/無効)
+        active_val = get_val(["有効", "有効フラグ", "Active"], False)
+        # "有効" などの日本語対応も含めるならここを拡張できるが、とりあえずbool変換が無難
+        active = bool(active_val)
+        
+        skip_download = bool(get_val(["DLスキップ", "ダウンロードスキップ", "SkipDownload"], False))
+        close_after = bool(get_val(["終了後閉じる", "閉じる", "CloseAfter"], False))
+        
+        popup_msg_val = get_val(["メッセージ", "ポップアップ", "PopupMessage"], "")
+        popup_message = str(popup_msg_val) if not pd.isna(popup_msg_val) else ""
+        
+        macro_name_val = get_val(["マクロ名", "マクロ", "MacroName"], "")
+        macro_name = str(macro_name_val) if not pd.isna(macro_name_val) else ""
+
         return cls(
-            group=str(row.get("Group", "")),
+            group=group,
             start_time=start_time,
-            file_path=str(row.get("FilePath", "")),
-            target_sheet=str(row.get("TargetSheet", "")),
-            search_key=str(row.get("SearchKey", "")),
-            download_url=str(row.get("DownloadURL", "")),
-            action_after=str(row.get("ActionAfter", "Save")),
-            active=bool(row.get("Active", False)),
+            file_path=file_path,
+            target_sheet=target_sheet,
+            search_key=search_key,
+            download_url=download_url,
+            action_after=action_after,
+            active=active,
             end_time=end_time,
-            skip_download=bool(row.get("SkipDownload", False)),
-            close_after=bool(row.get("CloseAfter", False)),
-            popup_message=str(row.get("PopupMessage", "") if not pd.isna(row.get("PopupMessage")) else "")
+            skip_download=skip_download,
+            close_after=close_after,
+            popup_message=popup_message,
+            macro_name=macro_name
         )
 
 
@@ -150,6 +185,55 @@ class ConfigLoader:
                     
         else:
             self.master_path = Path(master_path)
+
+    def refresh_master_file(self) -> bool:
+        """
+        マスタファイルをExcelで開いて保存し、関数（TODAYなど）を更新する
+        """
+        if not self.master_path.exists():
+            return False
+            
+        logger.info(f"マスタファイルの値を更新中: {self.master_path.name}")
+        excel = None
+        workbook = None
+        
+        try:
+            # COM初期化
+            pythoncom.CoInitialize()
+            
+            # Excel起動
+            try:
+                # 既存のインスタンスをつかむとユーザーの邪魔になる可能性があるので
+                # 新規インスタンスで裏でこっそりやる
+                excel = win32com.client.DispatchEx("Excel.Application")
+            except:
+                excel = win32com.client.Dispatch("Excel.Application")
+                
+            excel.Visible = False
+            excel.DisplayAlerts = False
+            
+            # 開く -> 更新 -> 保存
+            workbook = excel.Workbooks.Open(str(self.master_path))
+            workbook.Save()
+            
+            logger.info("マスタファイルの値を更新しました")
+            return True
+            
+        except Exception as e:
+            logger.warning(f"マスタファイルの更新に失敗しました（読み込みは続行します）: {e}")
+            return False
+            
+        finally:
+            if workbook:
+                try: 
+                    workbook.Close(SaveChanges=False) 
+                except: pass
+            if excel:
+                try: 
+                    excel.Quit() 
+                except: pass
+            # COM終了
+            pythoncom.CoUninitialize()
     
     def load_tasks(self) -> List[TaskConfig]:
         """

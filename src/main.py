@@ -61,6 +61,9 @@ class CoworkerBotGUI:
         # GUI構築
         self._build_ui()
         
+        # 設定ファイルの値を更新（TODAY関数などを最新化）
+        self.config_loader.refresh_master_file()
+
         # セレクター読み込み
         self._load_selectors()
 

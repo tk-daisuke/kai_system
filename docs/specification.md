@@ -69,18 +69,21 @@ Root/
 
 `TaskList` シートにて動作定義を行う。
 
-| 項目名 | 型 | 必須 | 説明 |
-|:---|:---|:---:|:---|
-| **Active** | Boolean | 〇 | `TRUE`: 有効, `FALSE`: 無効 |
-| **Group** | String | 〇 | 業務グループ名（GUIボタンのラベル） |
-| **Memo** | String | | 備考欄（システム動作には影響しない） |
-| **StartTime** | Time | 〇 | 実行開始時刻 (HH:MM) |
-| **EndTime** | Time | 〇 | 実行期限時刻 (HH:MM)。此処を過ぎると自動実行時はスキップ |
-| **FilePath** | String | 〇 | 対象Excelファイルの絶対パス |
-| **TargetSheet** | String | 〇 | 転記先シート名 |
-| **DownloadURL** | String | 〇 | CSVダウンロードURL |
-| **SearchKey** | String | 〇 | ダウンロードファイルを特定するファイル名の一部 |
-| **ActionAfter** | String | 〇 | `Save` (保存して閉じる) / `Pause` (保存せず停止) |
+### 5-1. 設定項目
+**Config (from Task_Master.xlsx)**
+- **Active** (`Active`): `TRUE`: 有効, `FALSE`: 無効
+- **グループ** (`Group`): Group name for batch execution
+- **メモ** (`Memo`): Remarks (no system impact)
+- **開始時刻** (`StartTime`): Execution start time (HH:MM)
+- **終了時刻** (`EndTime`): Execution end time (HH:MM)
+- **ファイルパス** (`FilePath`): Path to target Excel file
+- **転記シート** (`TargetSheet`): Destination sheet name
+- **ダウンロードURL** (`DownloadURL`): Source URL for CSV
+- **検索キー** (`SearchKey`): Keyword to find downloaded CSV
+- **完了後動作** (`ActionAfter`): 'Save' or 'Pause'
+- **終了後閉じる** (`CloseAfter`): Close Excel after task completion
+- **DLスキップ** (`SkipDownload`): Skip download process
+- **マクロ名** (`MacroName`): VBA macro to run before saving
 
 ## 6. エラーハンドリング・ログ
 - **ログ出力**: `logs/log_YYYYMMDD.txt` に日次で出力。

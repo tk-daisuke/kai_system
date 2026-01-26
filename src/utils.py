@@ -154,12 +154,12 @@ def show_message_box(title: str, message: str, style: int = 0) -> int:
     Returns:
         ボタンの戻り値（1=OK, 2=Cancel, 6=Yes, 7=No）
     """
-    # MB_TOPMOST (0x40000) を追加して最前面表示
+    # MB_TOPMOST (0x40000) を削除して、通常のウィンドウとして表示
     return ctypes.windll.user32.MessageBoxW(
         None, 
         message, 
         title, 
-        style | 0x40000
+        style  # | 0x40000 を削除
     )
 
 

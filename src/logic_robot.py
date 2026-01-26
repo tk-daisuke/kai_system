@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Optional, List
 import glob
 
+import traceback
 import win32com.client
 
 from config_loader import TaskConfig
@@ -44,7 +45,8 @@ class ExcelHandler:
                 logger.info("新しいExcelインスタンスを起動しました")
             
             self.excel_app.Visible = visible
-            self.excel_app.DisplayAlerts = False
+            self.excel_app.DisplayAlerts = False  # 警告ダイアログを抑制
+            self.excel_app.AskToUpdateLinks = False  # リンク更新の確認を抑制
             return True
         except Exception as e:
             logger.error(f"Excel起動エラー: {e}")
@@ -57,7 +59,15 @@ class ExcelHandler:
                 logger.error(f"ファイルが見つかりません: {file_path}")
                 return False
             
-            self.workbook = self.excel_app.Workbooks.Open(file_path)
+            # UpdateLinks=0: リンクを更新しない
+            # ReadOnly=False: 読み取り専用で開かない
+            # IgnoreReadOnlyRecommended=True: 読み取り専用推奨ダイアログを無視
+            self.workbook = self.excel_app.Workbooks.Open(
+                file_path,
+                UpdateLinks=0,
+                ReadOnly=False,
+                IgnoreReadOnlyRecommended=True
+            )
             logger.info(f"ワークブックを開きました: {file_path}")
             return True
         except Exception as e:
@@ -132,6 +142,19 @@ class ExcelHandler:
                 logger.info("Excelアプリケーションを終了しました")
         except Exception as e:
             logger.error(f"Excel終了エラー: {e}")
+
+    def run_macro(self, macro_name: str) -> bool:
+        """指定したマクロを実行する"""
+        try:
+            # マクロ名は 'Book1!MacroName' のように指定される場合もあるが、
+            # 単に 'MacroName' だけでも標準モジュールなら動くことが多い。
+            logger.info(f"マクロを実行中: {macro_name}")
+            self.excel_app.Run(macro_name)
+            logger.info(f"マクロ実行完了: {macro_name}")
+            return True
+        except Exception as e:
+            logger.error(f"マクロ実行エラー ({macro_name}): {e}")
+            return False
 
 
 class DownloadHandler:
@@ -375,25 +398,46 @@ class TaskRunner:
                 logger.info(f"ダウンロードをスキップしました: {file_name}")
                 self._notify_progress(task_num, total_tasks, f"ファイルを開きました: {file_name}")
             
+            # ▼ マクロ実行（ActionAfter処理の前）
+            if task.macro_name:
+                self._notify_progress(task_num, total_tasks, f"マクロ実行中: {task.macro_name}")
+                if not self.excel_handler.run_macro(task.macro_name):
+                    # マクロ失敗で止めるかは要件によるが、ここではログだけ出して続行する
+                    # （失敗したら意味ない場合は return False にする）
+                    show_warning("マクロエラー", f"マクロ '{task.macro_name}' の実行に失敗しました。\n処理を続行しますが、結果を確認してください。")
+            
             # ActionAfter処理
             if task.action_after.upper() == "PAUSE":
                 # 一時停止してユーザーに手動作業を促す
                 self._notify_progress(task_num, total_tasks, f"手動作業待ち: {file_name}")
                 
-                # カスタムポップアップメッセージがあれば使用
-                if task.popup_message:
-                    popup_msg = task.popup_message
-                else:
-                    popup_msg = (
-                        f"手動作業を行ってください。\n\n"
-                        f"ファイル: {task.file_path}\n"
-                        f"シート: {task.target_sheet}\n\n"
-                        f"作業完了後、OKを押してください。"
-                    )
-                show_info("Co-worker Bot - 手動作業", popup_msg)
-                
-                # OK押下後に保存
-                self.excel_handler.save_workbook()
+                try:
+                    # カスタムポップアップメッセージがあれば使用
+                    if task.popup_message:
+                        popup_msg = task.popup_message
+                    else:
+                        popup_msg = (
+                            f"手動作業を行ってください。\n\n"
+                            f"ファイル: {task.file_path}\n"
+                            f"シート: {task.target_sheet}\n\n"
+                            f"作業完了後、OKを押してください。"
+                        )
+                    show_info("Co-worker Bot - 手動作業", popup_msg)
+                    
+                    # OK押下後に保存
+                    # 注意: ここでエラーが出ても、ユーザー作業は完了しているのでタスクは成功扱いとする
+                    try:
+                        if self.excel_handler.workbook:
+                            self.excel_handler.save_workbook()
+                    except Exception as save_err:
+                        logger.warning(f"PAUSE後の保存に失敗しましたが、続行します: {save_err}")
+                        
+                except Exception as e:
+                    logger.error(f"PAUSE処理中のエラー: {e}")
+                    # PAUSE自体はユーザー介入なので、ここでエラーが出ても続行可能な場合は成功としたいが、
+                    # 致命的なエラーの可能性もあるため、ログには残す。
+                    # ただし「作業完了」の意志は示されたのでTrueで抜ける設計にする
+                    pass
             else:
                 # 自動保存
                 self._notify_progress(task_num, total_tasks, f"保存中: {file_name}")
@@ -412,7 +456,7 @@ class TaskRunner:
             return True
             
         except Exception as e:
-            logger.error(f"タスク実行エラー: {e}")
+            logger.error(f"タスク実行エラー: {e}\n{traceback.format_exc()}")
             if task.close_after:
                 self.excel_handler.close_workbook()
                 self.excel_handler.quit_excel()
@@ -476,12 +520,10 @@ class TaskRunner:
             else:
                 results["failed"] += 1
         
-        # グループ終了時のクリーンアップ（開いたままのワークブックを閉じる）
+        # グループ終了時のクリーンアップ
+        # タスク個別の CloseAfter 設定を尊重するため、ここでは強制クローズしない
         if self.excel_handler.workbook is not None:
-            logger.info("グループ終了時にワークブックを閉じます")
-            self.excel_handler.close_workbook(save=False)
-            self.excel_handler.quit_excel()
-            self.current_workbook_path = None
+            logger.info("ワークブックを開いたまま終了します（CloseAfter設定に従います）")
         
         self._notify_progress(total_tasks, total_tasks, "全タスク完了")
         logger.info(
