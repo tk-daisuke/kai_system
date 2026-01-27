@@ -51,7 +51,7 @@ Root/
     - `StartTime` ～ `EndTime` の範囲内である場合のみ実行。範囲外の場合はスキップ（ログ記録）。
 - **フロー**:
     1.  指定URLをブラウザで開く（ダウンロード開始）。
-    2.  `Downloads` フォルダを監視し、`SearchKey` に一致する最新CSVファイルを特定。
+    2.  `Downloads` フォルダを監視し、**全てのCSVファイルを削除後**（※ユーザー確認あり）、新規にダウンロードされたCSVファイルを特定（ファイル名は問わない）。
     3.  Excel (`FilePath`) を起動・オープン。
     4.  CSVデータを `TargetSheet` に値貼り付け。
     5.  `ActionAfter` 設定に従い、保存(Save) または 一時停止(Pause) を行う。
@@ -79,7 +79,7 @@ Root/
 - **ファイルパス** (`FilePath`): Path to target Excel file
 - **CSV転記シート** (`TargetSheet`): Destination sheet name
 - **ダウンロードURL** (`DownloadURL`): Source URL for CSV
-- **検索キー** (`SearchKey`): Keyword to find downloaded CSV
+- **検索キー** (`SearchKey`): **廃止（未使用）。** ダウンロードされた任意のCSVを対象とするため、設定値は無視されます。
 - **完了後動作** (`ActionAfter`): 'Save' or 'Pause'
 - **終了後閉じる** (`CloseAfter`): Close Excel after task completion
 - **DLスキップ** (`SkipDownload`): Skip download process

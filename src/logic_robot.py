@@ -164,12 +164,40 @@ class DownloadHandler:
         self.downloads_folder = get_downloads_folder()
         self.timeout = timeout
     
-    def cleanup_existing_csv(self, search_key: str) -> None:
-        """既存の該当CSVファイルを削除（誤爆防止）"""
-        pattern = str(self.downloads_folder / f"*{search_key}*.csv")
-        for file_path in glob.glob(pattern):
+    def cleanup_existing_csv(self, search_key: str = "") -> bool:
+        """
+        ダウンロードフォルダ内の既存CSVファイルを削除する
+        
+        Args:
+            search_key: (廃止予定) 互換性のため残すが使用しない
+            
+        Returns:
+            削除実行（または削除対象なし）ならTrue
+            ユーザーキャンセルならFalse
+        """
+        # 全てのCSVを対象にする
+        pattern = str(self.downloads_folder / "*.csv")
+        files = glob.glob(pattern)
+        
+        if not files:
+            return True
+            
+        # ファイルがある場合は確認
+        msg = (
+            f"ダウンロードフォルダに {len(files)} 個のCSVファイルがあります。\n"
+            "誤処理を防ぐため、これらを全て削除してからダウンロードを開始します。\n\n"
+            "削除してよろしいですか？\n"
+            "（「キャンセル」を選ぶとタスクを中断します）"
+        )
+        
+        if not confirm_dialog("既存ファイルの削除確認", msg):
+            logger.warning("ユーザーによりCSV削除がキャンセルされました。タスクを中断します。")
+            return False
+            
+        for file_path in files:
             safe_delete_file(Path(file_path))
-            logger.info(f"既存CSVを削除しました: {file_path}")
+            
+        return True
     
     def download_direct(self, url: str, search_key: str) -> Optional[Path]:
         """
@@ -234,8 +262,8 @@ class DownloadHandler:
         start_time = time_module.time()
         
         while time_module.time() - start_time < self.timeout:
-            # CSVファイルを検索（厳密に .csv のみ）
-            pattern = str(self.downloads_folder / f"*{search_key}*.csv")
+            # CSVファイルを検索（全ての .csv を対象）
+            pattern = str(self.downloads_folder / "*.csv")
             files = glob.glob(pattern)
             
             for file_path in files:
@@ -359,7 +387,12 @@ class TaskRunner:
             csv_path = None
             if not task.skip_download:
                 # 既存CSVの削除
-                self.download_handler.cleanup_existing_csv(task.search_key)
+                if not self.download_handler.cleanup_existing_csv(task.search_key):
+                    if task.close_after:
+                        self.excel_handler.close_workbook()
+                        self.excel_handler.quit_excel()
+                        self.current_workbook_path = None
+                    return False
                 
                 # ダウンロードをトリガー
                 self._notify_progress(task_num, total_tasks, f"ダウンロード中: {task.search_key}")
