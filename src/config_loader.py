@@ -24,13 +24,16 @@ class TaskConfig:
     target_sheet: str
     search_key: str
     download_url: str
-    action_after: str  # "Save" or "Pause"
+    action_after: str  # "Save", "Pause", or "None"（何もしない）
     active: bool
     end_time: time
     skip_download: bool = False   # ダウンロードをスキップ（ファイルを開くのみ）
     close_after: bool = False      # TRUEでタスク完了後にファイルを閉じる（デフォルトは開いたまま）
     popup_message: str = ""        # カスタムポップアップメッセージ
     macro_name: str = ""           # 実行するVBAマクロ名
+    weekdays: str = ""             # 実行曜日（1=月〜7=日、カンマ区切り）
+    skip_holiday: bool = False     # 祝日スキップ
+    date_condition: str = ""       # 日付条件（1,15 = 毎月1日・15日、L = 月末）
     
     def start_time_str(self) -> str:
         """StartTimeを文字列で返す（HH:MM形式）"""
@@ -130,6 +133,12 @@ class TaskConfig:
         
         macro_name_val = get_val(["マクロ名", "マクロ", "MacroName"], "")
         macro_name = str(macro_name_val) if not pd.isna(macro_name_val) else ""
+        
+        # 条件付き実行フィールド
+        weekdays = str(get_val(["曜日", "Weekdays"], "")).strip()
+        skip_holiday_val = get_val(["祝日スキップ", "SkipHoliday"], False)
+        skip_holiday = skip_holiday_val is True or str(skip_holiday_val).upper() == "TRUE"
+        date_condition = str(get_val(["日付条件", "DateCondition"], "")).strip()
 
         return cls(
             group=group,
@@ -144,7 +153,10 @@ class TaskConfig:
             skip_download=skip_download,
             close_after=close_after,
             popup_message=popup_message,
-            macro_name=macro_name
+            macro_name=macro_name,
+            weekdays=weekdays,
+            skip_holiday=skip_holiday,
+            date_condition=date_condition
         )
 
 
@@ -304,6 +316,44 @@ class ConfigLoader:
         tasks = self.load_tasks()
         return [t for t in tasks if t.group == group_name]
     
+    def get_tasks_by_group_optimized(self, group_name: str) -> List[TaskConfig]:
+        """
+        指定グループのタスク一覧を取得（ファイルパスでグループ化して最適化）
+        
+        同じファイルパスを持つタスクを連続して配置し、
+        ファイルの開き直しを最小化する
+        
+        Args:
+            group_name: グループ名
+            
+        Returns:
+            最適化されたTaskConfigリスト
+        """
+        tasks = [t for t in self.load_tasks() if t.group == group_name]
+        
+        if not tasks:
+            return []
+        
+        # ファイルパスごとにグループ化
+        from collections import OrderedDict
+        file_groups: OrderedDict[str, List[TaskConfig]] = OrderedDict()
+        
+        for task in tasks:
+            fp = task.file_path
+            if fp not in file_groups:
+                file_groups[fp] = []
+            file_groups[fp].append(task)
+        
+        # 各ファイルグループ内を開始時刻順でソート
+        optimized_tasks = []
+        for file_path, group_tasks in file_groups.items():
+            # 時刻順にソート
+            sorted_tasks = sorted(group_tasks, key=lambda t: t.start_time)
+            optimized_tasks.extend(sorted_tasks)
+        
+        logger.info(f"タスク最適化: {len(tasks)}件 → {len(file_groups)}ファイル")
+        return optimized_tasks
+    
     def get_tasks_by_start_time(self, start_time: time) -> List[TaskConfig]:
         """
         指定StartTimeのタスク一覧を取得
@@ -340,6 +390,50 @@ class ConfigLoader:
         """
         tasks = self.load_tasks()
         return sorted(tasks, key=lambda t: (t.start_time, t.group))
+
+    def validate_tasks(self) -> List[dict]:
+        """
+        タスク設定のバリデーションを行う
+        
+        Returns:
+            問題のあるタスクのリスト [{task: TaskConfig, issues: List[str]}]
+        """
+        tasks = self.load_tasks()
+        issues_list = []
+        
+        for task in tasks:
+            issues = []
+            
+            # ファイルパスの存在チェック
+            if task.file_path:
+                if not Path(task.file_path).exists():
+                    issues.append(f"ファイルが見つかりません: {task.file_path}")
+            else:
+                issues.append("ファイルパスが空です")
+            
+            # URL チェック（ダウンロードスキップでなければ必須）
+            if not task.skip_download:
+                if not task.download_url:
+                    issues.append("ダウンロードURLが空です")
+                elif not task.download_url.startswith(("http://", "https://")):
+                    issues.append(f"不正なURL形式: {task.download_url}")
+            
+            # シート名チェック
+            if not task.skip_download and not task.target_sheet:
+                issues.append("転記シート名が空です")
+            
+            if issues:
+                issues_list.append({
+                    "task": task,
+                    "issues": issues
+                })
+        
+        if issues_list:
+            logger.warning(f"設定にエラーのあるタスク: {len(issues_list)} 件")
+        else:
+            logger.info("全タスクの設定チェック: OK")
+        
+        return issues_list
 
 
 # テスト用

@@ -24,6 +24,7 @@ else:
 from config_loader import ConfigLoader, TaskConfig
 from logic_robot import TaskRunner
 from utils import logger, show_info, show_error, show_warning
+from notifier import notify_task_complete
 
 
 class CoworkerBotGUI:
@@ -57,6 +58,7 @@ class CoworkerBotGUI:
         self.history_entries: List[dict] = []
         self.current_file_name: str = ""
         self.task_start_time: datetime = None
+        self.dark_mode: bool = False  # ダークモードフラグ
         
         # GUI構築
         self._build_ui()
@@ -66,6 +68,9 @@ class CoworkerBotGUI:
 
         # セレクター読み込み
         self._load_selectors()
+        
+        # 設定バリデーション
+        self._validate_settings()
 
         # 起動時のチェック（ブラウザ起動・警告）
         self.root.after(500, self._startup_check)
@@ -136,11 +141,58 @@ class CoworkerBotGUI:
             foreground="#0066cc"
         )
     
+    def _create_menu_bar(self) -> None:
+        """メニューバーを作成"""
+        menubar = tk.Menu(self.root)
+        self.root.config(menu=menubar)
+        
+        # 表示メニュー
+        view_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="表示", menu=view_menu)
+        
+        self.dark_mode_var = tk.BooleanVar(value=False)
+        view_menu.add_checkbutton(
+            label="ダークモード",
+            variable=self.dark_mode_var,
+            command=self._toggle_dark_mode
+        )
+    
+    def _toggle_dark_mode(self) -> None:
+        """ダークモードの切り替え"""
+        self.dark_mode = self.dark_mode_var.get()
+        
+        if self.dark_mode:
+            # ダークテーマ
+            self.root.configure(bg="#2b2b2b")
+            style = ttk.Style()
+            style.configure("TFrame", background="#2b2b2b")
+            style.configure("TLabel", background="#2b2b2b", foreground="#ffffff")
+            style.configure("TLabelframe", background="#2b2b2b", foreground="#ffffff")
+            style.configure("TLabelframe.Label", background="#2b2b2b", foreground="#ffffff")
+            style.configure("TButton", background="#404040")
+            if hasattr(self, 'history_text'):
+                self.history_text.configure(bg="#1e1e1e", fg="#d4d4d4")
+        else:
+            # ライトテーマ
+            self.root.configure(bg="#f0f0f0")
+            style = ttk.Style()
+            style.configure("TFrame", background="#f0f0f0")
+            style.configure("TLabel", background="#f0f0f0", foreground="#000000")
+            style.configure("TLabelframe", background="#f0f0f0", foreground="#000000")
+            style.configure("TLabelframe.Label", background="#f0f0f0", foreground="#000000")
+            style.configure("TButton", background="#e1e1e1")
+            if hasattr(self, 'history_text'):
+                self.history_text.configure(bg="#f8f8f8", fg="#000000")
+    
     def _build_ui(self) -> None:
         """UIを構築"""
+        # メニューバー
+        self._create_menu_bar()
+        
         # メインフレーム
         main_frame = ttk.Frame(self.root, padding=15)
         main_frame.pack(fill=tk.BOTH, expand=True)
+        self.main_frame = main_frame  # 参照保存
         
         # タイトル
         title_label = ttk.Label(
@@ -285,13 +337,26 @@ class CoworkerBotGUI:
         self.history_text.tag_configure("info", foreground="#0066cc")
         self.history_text.tag_configure("skip", foreground="#ffc107")
         
+        # フィルターボタンフレーム
+        filter_frame = ttk.Frame(history_frame)
+        filter_frame.pack(fill=tk.X, pady=(5, 0))
+        
+        ttk.Label(filter_frame, text="フィルタ:", font=("Yu Gothic UI", 9)).pack(side=tk.LEFT)
+        
+        self.filter_var = tk.StringVar(value="all")
+        filters = [("全て", "all"), ("成功", "success"), ("失敗", "error"), ("スキップ", "skip")]
+        for text, value in filters:
+            rb = ttk.Radiobutton(filter_frame, text=text, value=value, 
+                                 variable=self.filter_var, command=self._apply_filter)
+            rb.pack(side=tk.LEFT, padx=3)
+        
         # クリアボタン
         clear_btn = ttk.Button(
-            history_frame,
+            filter_frame,
             text="履歴クリア",
             command=self._clear_history
         )
-        clear_btn.pack(anchor=tk.E, pady=(5, 0))
+        clear_btn.pack(side=tk.RIGHT)
         
         # ステータスバー
         self.status_var = tk.StringVar(value="準備完了")
@@ -307,6 +372,18 @@ class CoworkerBotGUI:
         """履歴にエントリを追加"""
         timestamp = datetime.now().strftime("%H:%M:%S")
         
+        # 履歴エントリを保存（フィルタ用）
+        self.history_entries.append({
+            "timestamp": timestamp,
+            "message": message,
+            "level": level
+        })
+        
+        # 現在のフィルタに合致するか確認
+        current_filter = getattr(self, 'filter_var', None)
+        if current_filter and current_filter.get() != "all" and current_filter.get() != level:
+            return  # フィルタに合致しない場合は表示しない
+        
         self.history_text.configure(state=tk.NORMAL)
         self.history_text.insert(tk.END, f"[{timestamp}] ", "timestamp")
         self.history_text.insert(tk.END, f"{message}\n", level)
@@ -315,8 +392,24 @@ class CoworkerBotGUI:
         
         self.root.update()
     
+    def _apply_filter(self) -> None:
+        """フィルタを適用して履歴を再表示"""
+        selected = self.filter_var.get()
+        
+        self.history_text.configure(state=tk.NORMAL)
+        self.history_text.delete(1.0, tk.END)
+        
+        for entry in self.history_entries:
+            if selected == "all" or entry["level"] == selected:
+                self.history_text.insert(tk.END, f"[{entry['timestamp']}] ", "timestamp")
+                self.history_text.insert(tk.END, f"{entry['message']}\n", entry["level"])
+        
+        self.history_text.see(tk.END)
+        self.history_text.configure(state=tk.DISABLED)
+    
     def _clear_history(self) -> None:
         """履歴をクリア"""
+        self.history_entries = []  # 保存された履歴もクリア
         self.history_text.configure(state=tk.NORMAL)
         self.history_text.delete(1.0, tk.END)
         self.history_text.configure(state=tk.DISABLED)
@@ -397,6 +490,9 @@ class CoworkerBotGUI:
                     command=lambda g=group_name: self._on_group_selected(g)
                 )
                 btn.pack(side=tk.LEFT, padx=2, expand=True, fill=tk.X)
+                
+                # 右クリックメニューをバインド
+                btn.bind("<Button-3>", lambda e, g=group_name: self._show_group_context_menu(e, g))
             
             # タスクコンボボックスに値を設定
             task_labels = [
@@ -415,6 +511,86 @@ class CoworkerBotGUI:
             logger.error(f"データ読み込みエラー: {e}")
             show_error(self.WINDOW_TITLE, f"データの読み込みに失敗しました:\n{e}")
     
+    def _validate_settings(self) -> None:
+        """設定ファイルのバリデーションを行い、問題があれば警告表示"""
+        try:
+            issues = self.config_loader.validate_tasks()
+            
+            if issues:
+                # 最大5件まで表示
+                msg_lines = ["以下のタスクに設定の問題があります:\n"]
+                for i, item in enumerate(issues[:5]):
+                    task = item["task"]
+                    task_name = Path(task.file_path).name if task.file_path else "(パスなし)"
+                    msg_lines.append(f"• [{task.group}] {task_name}")
+                    for issue in item["issues"][:2]:
+                        msg_lines.append(f"    - {issue}")
+                
+                if len(issues) > 5:
+                    msg_lines.append(f"\n...他 {len(issues) - 5} 件")
+                
+                msg_lines.append("\n\n処理は続行できますが、該当タスクでエラーになる可能性があります。")
+                
+                show_warning("設定チェック", "\n".join(msg_lines))
+                self._add_history(f"設定警告: {len(issues)} 件のタスクに問題あり", "skip")
+                
+        except Exception as e:
+            logger.warning(f"設定バリデーション中にエラー: {e}")
+    
+    def _show_group_context_menu(self, event, group_name: str) -> None:
+        """グループボタンの右クリックメニューを表示"""
+        menu = tk.Menu(self.root, tearoff=0)
+        menu.add_command(
+            label="▶ 通常実行",
+            command=lambda: self._on_group_selected(group_name)
+        )
+        menu.add_command(
+            label="⚡ 強制実行（時間チェック無視）",
+            command=lambda: self._on_group_force_execute(group_name)
+        )
+        menu.add_separator()
+        menu.add_command(
+            label="📂 設定ファイルを開く",
+            command=lambda: self._open_master_file()
+        )
+        menu.tk_popup(event.x_root, event.y_root)
+    
+    def _on_group_force_execute(self, group_name: str) -> None:
+        """グループを強制実行（時間チェック無視）"""
+        logger.info(f"強制実行: {group_name}")
+        self.status_var.set(f"強制実行中: {group_name}...")
+        self._reset_progress()
+        self._add_history(f"=== {group_name} 強制実行 ===", "info")
+        self.task_start_time = datetime.now()
+        
+        self.stop_btn.configure(state="normal")
+        self.pause_btn.configure(state="normal", text="⏸ 一時停止")
+        
+        try:
+            tasks = self.config_loader.get_tasks_by_group_optimized(group_name)
+            if not tasks:
+                show_warning(self.WINDOW_TITLE, f"'{group_name}' にはアクティブなタスクがありません。")
+                return
+            
+            # force=True で実行
+            results = self.task_runner.run_group(tasks, force=True)
+            self._show_results(group_name, results)
+            
+        except Exception as e:
+            logger.error(f"強制実行エラー: {e}")
+            show_error(self.WINDOW_TITLE, f"エラー: {e}")
+        finally:
+            self.stop_btn.configure(state="disabled")
+            self.pause_btn.configure(state="disabled")
+    
+    def _open_master_file(self) -> None:
+        """設定ファイルを開く"""
+        import os
+        try:
+            os.startfile(self.config_loader.master_path)
+        except Exception as e:
+            logger.error(f"ファイルオープンエラー: {e}")
+    
     def _on_group_selected(self, group_name: str) -> None:
         """グループボタンがクリックされた時の処理"""
         logger.info(f"グループ選択: {group_name}")
@@ -428,8 +604,8 @@ class CoworkerBotGUI:
         self.pause_btn.configure(state="normal", text="⏸ 一時停止")
         
         try:
-            # タスク取得
-            tasks = self.config_loader.get_tasks_by_group(group_name)
+            # タスク取得（ファイルパスで最適化）
+            tasks = self.config_loader.get_tasks_by_group_optimized(group_name)
             
             if not tasks:
                 show_warning(
@@ -468,6 +644,12 @@ class CoworkerBotGUI:
                 f"⏱ 所要時間: {minutes}分{seconds}秒"
             )
             show_info(self.WINDOW_TITLE, message)
+            
+            # トースト通知
+            notify_task_complete(
+                results['success'], results['failed'], results['skipped'],
+                f"{minutes}分{seconds}秒"
+            )
             
             self.status_var.set("完了しました")
             self.detail_status_var.set("✓ 全タスク完了")
@@ -600,6 +782,12 @@ class CoworkerBotGUI:
             f"⏱ 所要時間: {minutes}分{seconds}秒"
         )
         show_info(self.WINDOW_TITLE, message)
+        
+        # トースト通知
+        notify_task_complete(
+            results['success'], results['failed'], results['skipped'],
+            f"{minutes}分{seconds}秒"
+        )
         
         self.status_var.set("完了しました")
         self.detail_status_var.set("✓ 全タスク完了")

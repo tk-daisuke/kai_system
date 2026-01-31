@@ -24,6 +24,7 @@ from utils import (
     show_warning,
     confirm_dialog
 )
+from holiday_checker import should_skip_task
 
 
 class ExcelHandler:
@@ -55,9 +56,39 @@ class ExcelHandler:
     def open_workbook(self, file_path: str) -> bool:
         """ワークブックを開く"""
         try:
-            if not Path(file_path).exists():
+            path = Path(file_path)
+            if not path.exists():
                 logger.error(f"ファイルが見つかりません: {file_path}")
                 return False
+            
+            # ファイルロック検出（最大3回リトライ）
+            max_lock_retries = 3
+            for attempt in range(max_lock_retries):
+                if not is_file_locked(path):
+                    break
+                    
+                logger.warning(f"ファイルがロックされています: {file_path} (試行 {attempt + 1}/{max_lock_retries})")
+                
+                if attempt < max_lock_retries - 1:
+                    # ユーザーに確認
+                    import ctypes
+                    result = ctypes.windll.user32.MessageBoxW(
+                        None,
+                        f"ファイルが他のプロセスで開かれています:\n{path.name}\n\n"
+                        "ファイルを閉じてから「再試行」を押してください。\n"
+                        "スキップする場合は「キャンセル」を押してください。",
+                        "ファイルロック検出",
+                        0x05 | 0x30  # MB_RETRYCANCEL | MB_ICONWARNING
+                    )
+                    
+                    if result == 2:  # Cancel
+                        logger.warning("ユーザーによりスキップされました")
+                        return False
+                    # Retry = 4 → 続行
+                else:
+                    logger.error(f"ファイルロックが解除されませんでした: {file_path}")
+                    show_warning("ファイルロック", f"ファイルを開けませんでした:\n{path.name}")
+                    return False
             
             # UpdateLinks=0: リンクを更新しない
             # ReadOnly=False: 読み取り専用で開かない
@@ -163,6 +194,7 @@ class DownloadHandler:
     def __init__(self, timeout: int = 60):
         self.downloads_folder = get_downloads_folder()
         self.timeout = timeout
+        self.skip_csv_confirm = False  # セッション中の確認スキップフラグ
     
     def cleanup_existing_csv(self, search_key: str = "") -> bool:
         """
@@ -181,18 +213,36 @@ class DownloadHandler:
         
         if not files:
             return True
+        
+        # セッション中スキップが有効なら確認なしで削除
+        if self.skip_csv_confirm:
+            logger.info(f"確認スキップ中: {len(files)} 個のCSVを削除します")
+            for file_path in files:
+                safe_delete_file(Path(file_path))
+            return True
             
-        # ファイルがある場合は確認
+        # ファイルがある場合は確認（Yes/No/今後確認しない）
         msg = (
             f"ダウンロードフォルダに {len(files)} 個のCSVファイルがあります。\n"
             "誤処理を防ぐため、これらを全て削除してからダウンロードを開始します。\n\n"
-            "削除してよろしいですか？\n"
-            "（「キャンセル」を選ぶとタスクを中断します）"
+            "【はい】削除して続行\n"
+            "【いいえ】タスクを中断\n"
+            "【キャンセル】今後このセッション中は確認せず削除"
         )
         
-        if not confirm_dialog("既存ファイルの削除確認", msg):
+        # Yes=6, No=7, Cancel=2
+        import ctypes
+        result = ctypes.windll.user32.MessageBoxW(
+            None, msg, "既存ファイルの削除確認",
+            0x03 | 0x30  # MB_YESNOCANCEL | MB_ICONWARNING
+        )
+        
+        if result == 7:  # No
             logger.warning("ユーザーによりCSV削除がキャンセルされました。タスクを中断します。")
             return False
+        elif result == 2:  # Cancel = 今後確認しない
+            self.skip_csv_confirm = True
+            logger.info("今後のCSV削除確認をスキップします")
             
         for file_path in files:
             safe_delete_file(Path(file_path))
@@ -247,40 +297,49 @@ class DownloadHandler:
             logger.error(f"URL起動エラー: {e}")
             return False
     
-    def wait_for_download(self, search_key: str) -> Optional[Path]:
+    def wait_for_download(self, search_key: str, max_retries: int = 3, retry_delay: int = 5) -> Optional[Path]:
         """
-        ダウンロードフォルダを監視し、CSVファイルの完了を待つ
+        ダウンロードフォルダを監視し、CSVファイルの完了を待つ（リトライ機能付き）
         
         Args:
-            search_key: ファイル名に含まれるキーワード
+            search_key: ファイル名に含まれるキーワード（現在未使用）
+            max_retries: 最大リトライ回数
+            retry_delay: リトライ間隔（秒）
             
         Returns:
             ダウンロードされたファイルのパス、タイムアウト時はNone
         """
-        logger.info(f"ダウンロード待機中... (キー: {search_key}, タイムアウト: {self.timeout}秒)")
-        
-        start_time = time_module.time()
-        
-        while time_module.time() - start_time < self.timeout:
-            # CSVファイルを検索（全ての .csv を対象）
-            pattern = str(self.downloads_folder / "*.csv")
-            files = glob.glob(pattern)
+        for attempt in range(max_retries):
+            if attempt > 0:
+                logger.info(f"ダウンロードリトライ中... ({attempt + 1}/{max_retries})")
+                time_module.sleep(retry_delay)
             
-            for file_path in files:
-                path = Path(file_path)
-                
-                # .crdownload などの一時ファイルは除外
-                if path.suffix.lower() != ".csv":
-                    continue
-                
-                # ファイルロックが解除されているか確認
-                if not is_file_locked(path):
-                    logger.success(f"ダウンロード完了: {path}")
-                    return path
+            logger.info(f"ダウンロード待機中... (タイムアウト: {self.timeout}秒)")
             
-            time_module.sleep(1)
+            start_time = time_module.time()
+            
+            while time_module.time() - start_time < self.timeout:
+                # CSVファイルを検索（全ての .csv を対象）
+                pattern = str(self.downloads_folder / "*.csv")
+                files = glob.glob(pattern)
+                
+                for file_path in files:
+                    path = Path(file_path)
+                    
+                    # .crdownload などの一時ファイルは除外
+                    if path.suffix.lower() != ".csv":
+                        continue
+                    
+                    # ファイルロックが解除されているか確認
+                    if not is_file_locked(path):
+                        logger.success(f"ダウンロード完了: {path}")
+                        return path
+                
+                time_module.sleep(1)
+            
+            logger.warning(f"ダウンロードタイムアウト (試行 {attempt + 1}/{max_retries})")
         
-        logger.error(f"ダウンロードがタイムアウトしました ({self.timeout}秒)")
+        logger.error(f"ダウンロードが全リトライで失敗しました ({max_retries}回試行)")
         return None
 
 
@@ -326,17 +385,88 @@ class TaskRunner:
             self.progress_callback(current, total, message)
     
     def check_time(self, task: TaskConfig, force: bool = False) -> bool:
-        """実行可能時間かチェックする"""
+        """
+        実行可能時間かチェックし、必要に応じて待機する
+        
+        - 現在時刻がセッション内（start_time〜end_time）なら即座に実行
+        - 現在時刻がstart_timeより前なら、start_timeまで待機してから実行
+        - 現在時刻がend_timeを過ぎていたらスキップ
+        
+        待機中はユーザーによる中断リクエストにも対応する
+        """
         if force:
             logger.info(f"強制実行モード: 時間チェックをスキップ ({task.start_time_str()})")
             return True
             
         now = datetime.now()
+        now_time = now.time()
+        
+        # 既にセッション内であれば即座に実行
         if task.is_within_session(now):
             return True
         
-        logger.warning(f"スキップ: 実行可能時間外です ({task.start_time.strftime('%H:%M')} - {task.end_time.strftime('%H:%M')})")
-        return False
+        # 深夜またぎ対応: start_time > end_time の場合
+        if task.start_time > task.end_time:
+            # 深夜またぎの場合は、now_time < start_time かつ now_time > end_time なら「待機」
+            # それ以外（すでにセッション内）は上でTrueを返している
+            if now_time > task.end_time and now_time < task.start_time:
+                # 待機すべき（start_timeまで待つ）
+                pass
+            else:
+                # すでに終了（end_time以降かつstart_time前ではない = セッション外）
+                logger.warning(f"スキップ: 実行可能時間外です ({task.start_time.strftime('%H:%M')} - {task.end_time.strftime('%H:%M')})")
+                return False
+        else:
+            # 通常の時間帯 (start_time <= end_time)
+            if now_time > task.end_time:
+                # 終了時刻を過ぎている → スキップ
+                logger.warning(f"スキップ: 実行可能時間を過ぎています ({task.start_time.strftime('%H:%M')} - {task.end_time.strftime('%H:%M')})")
+                return False
+            elif now_time < task.start_time:
+                # 開始時刻より前 → 待機する
+                pass
+        
+        # ここに来た場合は、start_timeまで待機する
+        wait_until = datetime.combine(now.date(), task.start_time)
+        
+        # 深夜またぎで、現在時刻がstart_timeより後（例: 今23:00でstart_time=22:00）の場合は翌日ではない
+        # 現在時刻がstart_timeより前の場合のみ待機対象
+        if now > wait_until:
+            # すでにstart_timeを過ぎているがis_within_sessionがFalseだった
+            # → end_timeを過ぎているケース（上で処理済み）なのでここには来ないはず
+            logger.warning(f"スキップ: 実行可能時間外です ({task.start_time.strftime('%H:%M')} - {task.end_time.strftime('%H:%M')})")
+            return False
+        
+        # 待機開始
+        wait_seconds = (wait_until - now).total_seconds()
+        wait_minutes = int(wait_seconds / 60)
+        
+        logger.info(f"待機開始: {task.start_time.strftime('%H:%M')} まで約 {wait_minutes} 分待機します")
+        self._notify_progress(0, 1, f"待機中: {task.start_time.strftime('%H:%M')} まで約 {wait_minutes} 分")
+        
+        # 1分ごとにチェックしながら待機
+        while datetime.now() < wait_until:
+            # 中断リクエストのチェック
+            if self.stop_requested:
+                logger.warning("待機中にユーザーにより中断されました")
+                return False
+            
+            # 一時停止中も待機を継続（ただしログする）
+            if self.paused:
+                self._notify_progress(0, 1, f"一時停止中（待機も一時停止）: {task.start_time.strftime('%H:%M')} 待ち")
+            
+            # 残り時間を更新
+            remaining = (wait_until - datetime.now()).total_seconds()
+            remaining_minutes = int(remaining / 60)
+            if remaining_minutes > 0 and not self.paused:
+                self._notify_progress(0, 1, f"待機中: {task.start_time.strftime('%H:%M')} まで残り {remaining_minutes} 分")
+            
+            # 60秒待機（残り時間が60秒未満なら残り時間だけ待機）
+            sleep_time = min(60, max(1, remaining))
+            time_module.sleep(sleep_time)
+        
+        logger.info(f"待機完了: {task.start_time.strftime('%H:%M')} になりました。タスクを開始します。")
+        return True
     
     def run_task(self, task: TaskConfig, task_num: int = 1, total_tasks: int = 1, force: bool = False) -> bool:
         """
@@ -354,6 +484,9 @@ class TaskRunner:
         file_name = Path(task.file_path).name
         self._notify_progress(task_num, total_tasks, f"開始: {file_name}")
         logger.info(f"タスク開始: {task.file_path}")
+        
+        # タスク開始時刻を記録
+        task_start = time_module.time()
         
         # 時刻チェック
         if not self.check_time(task, force):
@@ -440,7 +573,8 @@ class TaskRunner:
                     show_warning("マクロエラー", f"マクロ '{task.macro_name}' の実行に失敗しました。\n処理を続行しますが、結果を確認してください。")
             
             # ActionAfter処理
-            if task.action_after.upper() == "PAUSE":
+            action = task.action_after.upper()
+            if action == "PAUSE":
                 # 一時停止してユーザーに手動作業を促す
                 self._notify_progress(task_num, total_tasks, f"手動作業待ち: {file_name}")
                 
@@ -471,8 +605,12 @@ class TaskRunner:
                     # 致命的なエラーの可能性もあるため、ログには残す。
                     # ただし「作業完了」の意志は示されたのでTrueで抜ける設計にする
                     pass
+            elif action == "NONE" or action == "":
+                # 何もしない（保存しない）
+                logger.info(f"ActionAfter=NONE: 保存せずに続行します")
+                self._notify_progress(task_num, total_tasks, f"完了（保存なし）: {file_name}")
             else:
-                # 自動保存
+                # Save（デフォルト）: 自動保存
                 self._notify_progress(task_num, total_tasks, f"保存中: {file_name}")
                 self.excel_handler.save_workbook()
             
@@ -485,7 +623,11 @@ class TaskRunner:
                 logger.info(f"ワークブックを開いたままにします: {file_name}")
             
             self._notify_progress(task_num, total_tasks, f"完了: {file_name}")
-            logger.success(f"タスク完了: {task.file_path}")
+            
+            # タスク所要時間を計算・ログ
+            task_elapsed = time_module.time() - task_start
+            elapsed_str = f"{int(task_elapsed // 60):02d}:{int(task_elapsed % 60):02d}"
+            logger.success(f"タスク完了: {task.file_path} (所要時間: {elapsed_str})")
             return True
             
         except Exception as e:
@@ -501,7 +643,7 @@ class TaskRunner:
         グループ内の全タスクを順次実行
         
         Args:
-            tasks: 実行するタスクのリスト
+            tasks: 実行するタスクのリスト（最適化済みを推奨）
             force: 時間チェックをスキップするか
             
         Returns:
@@ -538,20 +680,42 @@ class TaskRunner:
                 
             logger.info(f"=== タスク {i}/{total_tasks} ===")
             
-            # run_task内でcheck_timeを呼ぶので、ここでの事前チェックは不要だが
-            # スキップカウントのために明示的に呼ぶか、run_taskに任せるか。
-            # run_taskがFalseを返した場合、失敗かスキップか区別がつかないため、
-            # ここで判定するのが安全。
+            # 次のタスクが同じファイルかチェック（スマートclose_after）
+            next_task = tasks[i] if i < total_tasks else None
+            is_last_for_this_file = (
+                next_task is None or 
+                next_task.file_path != task.file_path
+            )
+            
+            # close_afterを一時的に制御
+            original_close_after = task.close_after
+            if not is_last_for_this_file and task.close_after:
+                logger.info(f"次も同じファイルのため、close_afterをスキップします")
+                task.close_after = False
+            
+            # 日付条件チェック（曜日・祝日・日付）
+            should_skip, skip_reason = should_skip_task(
+                task.weekdays, task.skip_holiday, task.date_condition
+            )
+            if should_skip:
+                results["skipped"] += 1
+                self._notify_progress(i, total_tasks, f"スキップ({skip_reason}): {Path(task.file_path).name}")
+                logger.info(f"日付条件スキップ: {skip_reason}")
+                task.close_after = original_close_after  # 復元
+                continue
             
             if not self.check_time(task, force):
                 results["skipped"] += 1
                 self._notify_progress(i, total_tasks, f"スキップ: {Path(task.file_path).name}")
+                task.close_after = original_close_after  # 復元
                 continue
             
             if self.run_task(task, i, total_tasks, force):
                 results["success"] += 1
             else:
                 results["failed"] += 1
+            
+            task.close_after = original_close_after  # 復元
         
         # グループ終了時のクリーンアップ
         # タスク個別の CloseAfter 設定を尊重するため、ここでは強制クローズしない
