@@ -17,7 +17,7 @@ class TestTaskConfig(unittest.TestCase):
         # 09:00 - 17:00
         task = TaskConfig(
             group="Test", start_time=time(9, 0), end_time=time(17, 0),
-            file_path="", target_sheet="", search_key="", download_url="",
+            file_path="", target_sheet="", download_url="",
             action_after="", active=True,
             skip_download=False, close_after=False, popup_message=""
         )
@@ -36,7 +36,7 @@ class TestTaskConfig(unittest.TestCase):
         # 22:00 - 05:00
         task = TaskConfig(
             group="Test", start_time=time(22, 0), end_time=time(5, 0),
-            file_path="", target_sheet="", search_key="", download_url="",
+            file_path="", target_sheet="", download_url="",
             action_after="", active=True,
             skip_download=False, close_after=False, popup_message=""
         )
@@ -105,7 +105,7 @@ class TestCheckTimeWait(unittest.TestCase):
         # 今が12:00で、09:00〜17:00のセッションなら即時True
         task = TaskConfig(
             group="Test", start_time=time(9, 0), end_time=time(17, 0),
-            file_path="", target_sheet="", search_key="", download_url="",
+            file_path="", target_sheet="", download_url="",
             action_after="", active=True,
             skip_download=False, close_after=False, popup_message=""
         )
@@ -118,7 +118,7 @@ class TestCheckTimeWait(unittest.TestCase):
         """強制モードでは時間チェックをスキップ"""
         task = TaskConfig(
             group="Test", start_time=time(23, 59), end_time=time(23, 59),
-            file_path="", target_sheet="", search_key="", download_url="",
+            file_path="", target_sheet="", download_url="",
             action_after="", active=True,
             skip_download=False, close_after=False, popup_message=""
         )
@@ -130,7 +130,7 @@ class TestCheckTimeWait(unittest.TestCase):
         # 現在時刻より確実に過去の時間帯を設定
         task = TaskConfig(
             group="Test", start_time=time(0, 1), end_time=time(0, 2),
-            file_path="", target_sheet="", search_key="", download_url="",
+            file_path="", target_sheet="", download_url="",
             action_after="", active=True,
             skip_download=False, close_after=False, popup_message=""
         )

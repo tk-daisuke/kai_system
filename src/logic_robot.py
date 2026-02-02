@@ -297,12 +297,11 @@ class DownloadHandler:
             logger.error(f"URL起動エラー: {e}")
             return False
     
-    def wait_for_download(self, search_key: str, max_retries: int = 3, retry_delay: int = 5) -> Optional[Path]:
+    def wait_for_download(self, max_retries: int = 3, retry_delay: int = 5) -> Optional[Path]:
         """
         ダウンロードフォルダを監視し、CSVファイルの完了を待つ（リトライ機能付き）
         
         Args:
-            search_key: ファイル名に含まれるキーワード（現在未使用）
             max_retries: 最大リトライ回数
             retry_delay: リトライ間隔（秒）
             
@@ -520,7 +519,7 @@ class TaskRunner:
             csv_path = None
             if not task.skip_download:
                 # 既存CSVの削除
-                if not self.download_handler.cleanup_existing_csv(task.search_key):
+                if not self.download_handler.cleanup_existing_csv():
                     if task.close_after:
                         self.excel_handler.close_workbook()
                         self.excel_handler.quit_excel()
@@ -528,7 +527,7 @@ class TaskRunner:
                     return False
                 
                 # ダウンロードをトリガー
-                self._notify_progress(task_num, total_tasks, f"ダウンロード中: {task.search_key}")
+                self._notify_progress(task_num, total_tasks, f"ダウンロード中: {task.task_name or file_name}")
                 if not self.download_handler.trigger_download(task.download_url):
                     if task.close_after:
                         self.excel_handler.close_workbook()
@@ -537,8 +536,8 @@ class TaskRunner:
                     return False
                 
                 # ダウンロード待機
-                self._notify_progress(task_num, total_tasks, f"ダウンロード待機中: {task.search_key}")
-                csv_path = self.download_handler.wait_for_download(task.search_key)
+                self._notify_progress(task_num, total_tasks, f"ダウンロード待機中: {task.task_name or file_name}")
+                csv_path = self.download_handler.wait_for_download()
                 if csv_path is None:
                     logger.error("ダウンロードに失敗しました")
                     if task.close_after:

@@ -22,11 +22,11 @@ class TaskConfig:
     start_time: time
     file_path: str
     target_sheet: str
-    search_key: str
     download_url: str
     action_after: str  # "Save", "Pause", or "None"（何もしない）
     active: bool
     end_time: time
+    task_name: str = ""            # タスク名（任意の説明用）
     skip_download: bool = False   # ダウンロードをスキップ（ファイルを開くのみ）
     close_after: bool = False      # TRUEでタスク完了後にファイルを閉じる（デフォルトは開いたまま）
     popup_message: str = ""        # カスタムポップアップメッセージ
@@ -114,9 +114,10 @@ class TaskConfig:
         
         # 各値の取得（日本語優先）
         group = str(get_val(["グループ", "Group"], ""))
+        task_name_val = get_val(["タスク名", "TaskName", "Memo", "メモ"], "")
+        task_name = str(task_name_val) if not pd.isna(task_name_val) else ""
         file_path = str(get_val(["ファイルパス", "ファイル", "FilePath"], ""))
         target_sheet = str(get_val(["CSV転記シート", "転記シート", "シート", "TargetSheet"], ""))
-        search_key = str(get_val(["検索キー", "キーワード", "SearchKey"], ""))
         download_url = str(get_val(["URL", "ダウンロードURL", "DownloadURL"], ""))
         action_after = str(get_val(["完了後動作", "動作", "ActionAfter"], "Save"))
         
@@ -145,11 +146,11 @@ class TaskConfig:
             start_time=start_time,
             file_path=file_path,
             target_sheet=target_sheet,
-            search_key=search_key,
             download_url=download_url,
             action_after=action_after,
             active=active,
             end_time=end_time,
+            task_name=task_name,
             skip_download=skip_download,
             close_after=close_after,
             popup_message=popup_message,
