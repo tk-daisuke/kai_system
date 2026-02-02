@@ -319,40 +319,43 @@ class ConfigLoader:
     
     def get_tasks_by_group_optimized(self, group_name: str) -> List[TaskConfig]:
         """
-        指定グループのタスク一覧を取得（ファイルパスでグループ化して最適化）
+        指定グループのタスク一覧を取得（時刻順を優先、同一時刻内でファイル最適化）
         
-        同じファイルパスを持つタスクを連続して配置し、
-        ファイルの開き直しを最小化する
+        タスクは開始時刻順で実行される。同じ開始時刻のタスクのみ
+        ファイルパスでグループ化してファイルの開き直しを最小化する。
         
         Args:
             group_name: グループ名
             
         Returns:
-            最適化されたTaskConfigリスト
+            時刻順に最適化されたTaskConfigリスト
         """
         tasks = [t for t in self.load_tasks() if t.group == group_name]
         
         if not tasks:
             return []
         
-        # ファイルパスごとにグループ化
+        # まず開始時刻でグループ化
         from collections import OrderedDict
-        file_groups: OrderedDict[str, List[TaskConfig]] = OrderedDict()
+        time_groups: OrderedDict[time, List[TaskConfig]] = OrderedDict()
         
-        for task in tasks:
-            fp = task.file_path
-            if fp not in file_groups:
-                file_groups[fp] = []
-            file_groups[fp].append(task)
+        # 開始時刻順にソート
+        tasks_sorted = sorted(tasks, key=lambda t: t.start_time)
         
-        # 各ファイルグループ内を開始時刻順でソート
+        for task in tasks_sorted:
+            st = task.start_time
+            if st not in time_groups:
+                time_groups[st] = []
+            time_groups[st].append(task)
+        
+        # 各時刻グループ内でファイルパス順にソート（同一ファイルを連続配置）
         optimized_tasks = []
-        for file_path, group_tasks in file_groups.items():
-            # 時刻順にソート
-            sorted_tasks = sorted(group_tasks, key=lambda t: t.start_time)
-            optimized_tasks.extend(sorted_tasks)
+        for start_time, time_tasks in time_groups.items():
+            # ファイルパスでソートして同一ファイルを連続配置
+            sorted_by_file = sorted(time_tasks, key=lambda t: t.file_path)
+            optimized_tasks.extend(sorted_by_file)
         
-        logger.info(f"タスク最適化: {len(tasks)}件 → {len(file_groups)}ファイル")
+        logger.info(f"タスク最適化: {len(tasks)}件 → {len(time_groups)}時刻グループ")
         return optimized_tasks
     
     def get_tasks_by_start_time(self, start_time: time) -> List[TaskConfig]:

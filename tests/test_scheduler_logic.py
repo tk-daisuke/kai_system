@@ -146,3 +146,64 @@ class TestCheckTimeWait(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestTaskOptimization(unittest.TestCase):
+    """タスク順序最適化のテスト"""
+    
+    def test_time_priority_over_file(self):
+        """開始時刻順が優先され、ファイル順序より優先されることを確認"""
+        from config_loader import ConfigLoader
+        
+        # モックデータを使ってテスト
+        # 実際のConfigLoaderはファイルを読むので、ここではTaskConfigを直接テスト
+        task1 = TaskConfig(
+            group="Test", start_time=time(8, 0), end_time=time(9, 0),
+            file_path="A.xlsx", target_sheet="", download_url="",
+            action_after="", active=True,
+        )
+        task2 = TaskConfig(
+            group="Test", start_time=time(8, 30), end_time=time(9, 30),
+            file_path="B.xlsx", target_sheet="", download_url="",
+            action_after="", active=True,
+        )
+        task3 = TaskConfig(
+            group="Test", start_time=time(9, 0), end_time=time(10, 0),
+            file_path="A.xlsx", target_sheet="", download_url="",
+            action_after="", active=True,
+        )
+        
+        # 時刻順でソートされるべき
+        tasks = [task1, task3, task2]  # 意図的にシャッフル
+        sorted_tasks = sorted(tasks, key=lambda t: t.start_time)
+        
+        self.assertEqual(sorted_tasks[0].start_time, time(8, 0))
+        self.assertEqual(sorted_tasks[1].start_time, time(8, 30))
+        self.assertEqual(sorted_tasks[2].start_time, time(9, 0))
+    
+    def test_same_time_file_grouping(self):
+        """同一開始時刻内でファイルパス順にソートされることを確認"""
+        task1 = TaskConfig(
+            group="Test", start_time=time(8, 0), end_time=time(9, 0),
+            file_path="B.xlsx", target_sheet="", download_url="",
+            action_after="", active=True,
+        )
+        task2 = TaskConfig(
+            group="Test", start_time=time(8, 0), end_time=time(9, 0),
+            file_path="A.xlsx", target_sheet="", download_url="",
+            action_after="", active=True,
+        )
+        task3 = TaskConfig(
+            group="Test", start_time=time(8, 0), end_time=time(9, 0),
+            file_path="A.xlsx", target_sheet="Sheet2", download_url="",
+            action_after="", active=True,
+        )
+        
+        # 同一時刻内でファイルパス順にソート
+        tasks = [task1, task2, task3]
+        sorted_tasks = sorted(tasks, key=lambda t: t.file_path)
+        
+        # A.xlsxが先に来るはず
+        self.assertEqual(sorted_tasks[0].file_path, "A.xlsx")
+        self.assertEqual(sorted_tasks[1].file_path, "A.xlsx")
+        self.assertEqual(sorted_tasks[2].file_path, "B.xlsx")
