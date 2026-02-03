@@ -207,3 +207,92 @@ class TestTaskOptimization(unittest.TestCase):
         self.assertEqual(sorted_tasks[0].file_path, "A.xlsx")
         self.assertEqual(sorted_tasks[1].file_path, "A.xlsx")
         self.assertEqual(sorted_tasks[2].file_path, "B.xlsx")
+
+
+class TestMidnightCrossing(unittest.TestCase):
+    """深夜またぎのエッジケーステスト"""
+    
+    def test_midnight_crossing_boundary_cases(self):
+        """深夜またぎの境界ケースを徹底テスト"""
+        # 22:00 - 05:00 のセッション
+        task = TaskConfig(
+            group="Test", start_time=time(22, 0), end_time=time(5, 0),
+            file_path="", target_sheet="", download_url="",
+            action_after="", active=True,
+        )
+        
+        # 境界値: 22:00ちょうど（開始時刻）→ セッション内
+        self.assertTrue(task.is_within_session(datetime(2023, 1, 1, 22, 0)))
+        
+        # 境界値: 05:00ちょうど（終了時刻）→ セッション内
+        self.assertTrue(task.is_within_session(datetime(2023, 1, 2, 5, 0)))
+        
+        # 境界値: 21:59（開始時刻の直前）→ セッション外
+        self.assertFalse(task.is_within_session(datetime(2023, 1, 1, 21, 59)))
+        
+        # 境界値: 05:01（終了時刻の直後）→ セッション外
+        self.assertFalse(task.is_within_session(datetime(2023, 1, 2, 5, 1)))
+        
+        # 日中: 12:00 → セッション外
+        self.assertFalse(task.is_within_session(datetime(2023, 1, 1, 12, 0)))
+        
+        # 深夜: 00:00（日付変更線）→ セッション内
+        self.assertTrue(task.is_within_session(datetime(2023, 1, 2, 0, 0)))
+    
+    def test_same_start_end_time(self):
+        """開始と終了が同じ時刻のケース（24時間稼働）"""
+        task = TaskConfig(
+            group="Test", start_time=time(0, 0), end_time=time(0, 0),
+            file_path="", target_sheet="", download_url="",
+            action_after="", active=True,
+        )
+        
+        # 00:00 == 00:00 なのでセッション内
+        self.assertTrue(task.is_within_session(datetime(2023, 1, 1, 0, 0)))
+
+
+class TestConditionalExecution(unittest.TestCase):
+    """条件付き実行のテスト"""
+    
+    def test_weekday_condition(self):
+        """曜日条件のテスト"""
+        from holiday_checker import check_weekday_condition
+        
+        # 空文字 = 毎日実行
+        self.assertTrue(check_weekday_condition(""))
+        self.assertTrue(check_weekday_condition("   "))
+        
+        # nanの文字列は除外されるべき（from_rowで処理済みだが念のため）
+        # 注: holiday_checkerでは"nan"がパースに失敗してTrueを返す
+    
+    def test_date_condition(self):
+        """日付条件のテスト"""
+        from holiday_checker import check_date_condition
+        
+        # 空文字 = 毎日実行
+        self.assertTrue(check_date_condition(""))
+        self.assertTrue(check_date_condition("   "))
+    
+    def test_nan_handling_in_from_row(self):
+        """from_rowでnanが適切に処理されることを確認"""
+        import numpy as np
+        
+        row = pd.Series({
+            "グループ": "Test",
+            "開始時刻": "09:00",
+            "終了時刻": "17:00",
+            "ファイルパス": "test.xlsx",
+            "シート": "Sheet1",
+            "URL": "",
+            "完了後動作": "Save",
+            "有効": True,
+            "曜日": np.nan,  # nan
+            "日付条件": np.nan,  # nan
+        })
+        
+        task = TaskConfig.from_row(row)
+        
+        # nanは空文字列に変換されるべき
+        self.assertEqual(task.weekdays, "")
+        self.assertEqual(task.date_condition, "")
+

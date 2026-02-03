@@ -443,7 +443,8 @@ class TaskRunner:
         logger.info(f"待機開始: {task.start_time.strftime('%H:%M')} まで約 {wait_minutes} 分待機します")
         self._notify_progress(0, 1, f"待機中: {task.start_time.strftime('%H:%M')} まで約 {wait_minutes} 分")
         
-        # 1分ごとにチェックしながら待機
+        # 1秒ごとにチェックしながら待機（UI応答改善）
+        last_display_minute = -1
         while datetime.now() < wait_until:
             # 中断リクエストのチェック
             if self.stop_requested:
@@ -454,15 +455,15 @@ class TaskRunner:
             if self.paused:
                 self._notify_progress(0, 1, f"一時停止中（待機も一時停止）: {task.start_time.strftime('%H:%M')} 待ち")
             
-            # 残り時間を更新
+            # 残り時間を更新（分単位で変わった時のみ表示更新）
             remaining = (wait_until - datetime.now()).total_seconds()
             remaining_minutes = int(remaining / 60)
-            if remaining_minutes > 0 and not self.paused:
+            if remaining_minutes != last_display_minute and not self.paused:
                 self._notify_progress(0, 1, f"待機中: {task.start_time.strftime('%H:%M')} まで残り {remaining_minutes} 分")
+                last_display_minute = remaining_minutes
             
-            # 60秒待機（残り時間が60秒未満なら残り時間だけ待機）
-            sleep_time = min(60, max(1, remaining))
-            time_module.sleep(sleep_time)
+            # 1秒待機（UI応答を確保）
+            time_module.sleep(1)
         
         logger.info(f"待機完了: {task.start_time.strftime('%H:%M')} になりました。タスクを開始します。")
         return True

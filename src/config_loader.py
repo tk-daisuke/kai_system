@@ -135,11 +135,15 @@ class TaskConfig:
         macro_name_val = get_val(["マクロ名", "マクロ", "MacroName"], "")
         macro_name = str(macro_name_val) if not pd.isna(macro_name_val) else ""
         
-        # 条件付き実行フィールド
-        weekdays = str(get_val(["曜日", "Weekdays"], "")).strip()
+        # 条件付き実行フィールド（nanチェック追加）
+        weekdays_val = get_val(["曜日", "Weekdays"], "")
+        weekdays = "" if pd.isna(weekdays_val) else str(weekdays_val).strip()
+        
         skip_holiday_val = get_val(["祝日スキップ", "SkipHoliday"], False)
         skip_holiday = skip_holiday_val is True or str(skip_holiday_val).upper() == "TRUE"
-        date_condition = str(get_val(["日付条件", "DateCondition"], "")).strip()
+        
+        date_condition_val = get_val(["日付条件", "DateCondition"], "")
+        date_condition = "" if pd.isna(date_condition_val) else str(date_condition_val).strip()
 
         return cls(
             group=group,
