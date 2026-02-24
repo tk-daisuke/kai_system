@@ -1,61 +1,46 @@
-# kai_system - アクション定義
-# テンプレート変数:
-#   汎用（アクションの timezone に連動）:
-#     {from}, {to}           - ISO形式
-#     {from_short}, {to_short} - 2026-02-23 00:00
-#     {from_date}, {to_date}   - 日付のみ (2026-02-23)
-#     {from_date_jp}, {to_date_jp} - 日付のみ (20260223)
-#   明示（常に利用可能）:
-#     {from_jst}, {from_utc}, {to_jst}, {to_utc}
-#     {from_jst_date}, {from_utc_date}, {from_jst_jp}, {from_utc_jp}
-#     {from_epoch}, {to_epoch}
-#   互換:
-#     {today}, {today_jp}, {yesterday}, {yesterday_jp}
-
 actions:
-  - id: sales_csv
-    name: 売上レポート取得
-    type: csv_download
-    group: 午前業務
-    icon: 📊
-    timezone: jst            # ← {from} は JST 基準
-    display_order: 1
-    params:
-      url: "https://internal-tool.example.co.jp/csv?from={from_date_jp}&to={to_date_jp}"
-      excel_path: "C:/Reports/売上.xlsx"
-      target_sheet: "Data"
-      macro_name: "Module1.SendMailReport"
-
-  - id: inventory_csv
-    name: 在庫データ取得
-    type: csv_download
-    group: 午前業務
-    icon: 📦
-    timezone: jst
-    display_order: 2
-    params:
-      url: "https://internal-tool.example.co.jp/inventory?date={from_date}"
-      excel_path: "C:/Reports/在庫.xlsx"
-      target_sheet: "Raw"
-
-  - id: dashboard_scrape
-    name: ダッシュボードデータ取得
-    type: scraper
-    group: 午後業務
-    icon: 🌐
-    timezone: utc             # ← {from} は UTC 基準
-    display_order: 3
-    params:
-      mode: browser_csv
-      url: "https://analytics.example.com/export?start={from}&end={to}"
-      cdp_url: "http://localhost:9222"
-
-  - id: api_export
-    name: API集計エクスポート
-    type: shell_cmd
-    group: 夕方業務
-    icon: ⚡
-    timezone: utc
-    display_order: 4
-    params:
-      command: 'curl -o export.json "https://api.example.com/v2/data?from={from_epoch}&to={to_epoch}"'
+- id: sales_csv
+  name: 売上レポート取得
+  type: csv_download
+  group: 午前業務
+  icon: 📊
+  display_order: 1
+  params:
+    url: https://internal-tool.example.co.jp/csv?from={from_date_jp}&to={to_date_jp}
+    excel_path: C:/Reports/売上.xlsx
+    target_sheet: Data
+    macro_name: Module1.SendMailReport
+- id: inventory_csv
+  name: 在庫データ取得
+  type: csv_download
+  group: 午前業務
+  icon: 📦
+  display_order: 2
+  params:
+    url: https://internal-tool.example.co.jp/inventory?date={from_date}
+    excel_path: C:/Reports/在庫.xlsx
+    target_sheet: Raw
+- id: dashboard_scrape
+  name: ダッシュボードデータ取得
+  type: scraper
+  group: 午後業務
+  icon: 🌐
+  timezone: utc
+  display_order: 3
+  params:
+    mode: browser_csv
+    url: https://analytics.example.com/export?start={from}&end={to}
+    table_index: 0
+    cdp_url: http://localhost:9222
+    wait_selector: table
+    table_selector: table
+    download_timeout: 60
+- id: api_export
+  name: API集計エクスポート
+  type: shell_cmd
+  group: 夕方業務
+  icon: ⚡
+  timezone: utc
+  display_order: 4
+  params:
+    command: curl -o export.json "https://api.example.com/v2/data?from={from_epoch}&to={to_epoch}"

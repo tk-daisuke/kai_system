@@ -33,49 +33,18 @@ class ScrapingAction(ActionBase):
         if not params.get("url"):
             issues.append("URL (url) が指定されていません")
 
-        mode = params.get("mode", "auto_table")
-
-        if mode == "css_selector" and not params.get("selectors"):
-            issues.append("CSSセレクタモードでは selectors が必要です")
-
-        if mode in ("browser_session", "browser_csv"):
-            # browser系モードでは output は任意（browser_csv はダウンロード先が自動決定）
-            pass
-        else:
-            if not params.get("output"):
-                issues.append("出力先 (output) が指定されていません")
-
-        if mode == "browser_csv":
-            if not params.get("download_button"):
-                issues.append("ダウンロードボタンのセレクタ (download_button) が必要です")
+        if not params.get("download_button"):
+            issues.append("ダウンロードボタンのセレクタ (download_button) が必要です")
 
         return issues
 
     def execute(self, params: Dict[str, Any]) -> ActionResult:
-        """スクレーピングを実行"""
+        """スクレーピング（CSVダウンロード）を実行"""
         url = params.get("url", "")
-        mode = params.get("mode", "auto_table")
-        output = params.get("output", "")
-        output_sheet = params.get("output_sheet", "Sheet1")
-
         self._notify_progress(f"スクレーピング開始: {url}", 0)
 
         try:
-            if mode == "auto_table":
-                return self._scrape_auto_table(url, output, output_sheet, params)
-            elif mode == "css_selector":
-                return self._scrape_css_selector(url, output, output_sheet, params)
-            elif mode == "browser_session":
-                return self._scrape_browser_session(url, output, output_sheet, params)
-            elif mode == "browser_csv":
-                return self._scrape_browser_csv(url, params)
-            else:
-                return ActionResult(
-                    success=False,
-                    message=f"未対応のモード: {mode}",
-                    error=f"Unknown mode: {mode}",
-                )
-
+            return self._scrape_browser_csv(url, params)
         except ImportError as e:
             missing = str(e).split("'")[-2] if "'" in str(e) else str(e)
             return ActionResult(
@@ -91,207 +60,7 @@ class ScrapingAction(ActionBase):
                 error=str(e),
             )
 
-    # ----------------------------------------------------------------
-    # Mode: auto_table (Level 1 - 認証不要)
-    # ----------------------------------------------------------------
-    def _scrape_auto_table(
-        self, url: str, output: str, sheet_name: str, params: Dict[str, Any]
-    ) -> ActionResult:
-        """テーブル自動検出"""
-        import pandas as pd
-        import requests
-
-        self._notify_progress("ページを取得中...", 20)
-
-        headers = params.get("headers", {})
-        if not headers:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            }
-
-        response = requests.get(url, headers=headers, timeout=30)
-        response.raise_for_status()
-
-        self._notify_progress("テーブルを検出中...", 50)
-
-        tables = pd.read_html(response.text, encoding=response.encoding)
-
-        if not tables:
-            return ActionResult(
-                success=False,
-                message="テーブルが見つかりませんでした",
-                error="No tables found",
-            )
-
-        table_index = params.get("table_index", 0)
-        if table_index >= len(tables):
-            return ActionResult(
-                success=False,
-                message=f"テーブルインデックス {table_index} が範囲外 (検出: {len(tables)}個)",
-                error="Table index out of range",
-            )
-
-        df = tables[table_index]
-        self._notify_progress(f"出力中... ({len(df)} 行)", 80)
-        self._write_output(df, output, sheet_name)
-
-        self._notify_progress("完了", 100)
-        return ActionResult(
-            success=True,
-            message=f"スクレイピング完了: {len(df)} 行取得 → {output}",
-            data={"rows": len(df), "columns": len(df.columns), "output": output},
-        )
-
-    # ----------------------------------------------------------------
-    # Mode: css_selector (Level 2 - 認証不要)
-    # ----------------------------------------------------------------
-    def _scrape_css_selector(
-        self, url: str, output: str, sheet_name: str, params: Dict[str, Any]
-    ) -> ActionResult:
-        """CSSセレクタ指定"""
-        import pandas as pd
-        import requests
-        from bs4 import BeautifulSoup
-
-        self._notify_progress("ページを取得中...", 20)
-
-        headers = params.get("headers", {})
-        if not headers:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            }
-
-        response = requests.get(url, headers=headers, timeout=30)
-        response.raise_for_status()
-
-        self._notify_progress("データを抽出中...", 50)
-
-        soup = BeautifulSoup(response.text, "html.parser")
-        selectors = params.get("selectors", {})
-
-        data = {}
-        max_len = 0
-        for field_name, css_selector in selectors.items():
-            elements = soup.select(css_selector)
-            values = [el.get_text(strip=True) for el in elements]
-            data[field_name] = values
-            max_len = max(max_len, len(values))
-
-        if not data or max_len == 0:
-            return ActionResult(
-                success=False,
-                message="指定されたセレクタでデータが見つかりませんでした",
-                error="No data found with selectors",
-            )
-
-        for key in data:
-            while len(data[key]) < max_len:
-                data[key].append("")
-
-        df = pd.DataFrame(data)
-        self._notify_progress(f"出力中... ({len(df)} 行)", 80)
-        self._write_output(df, output, sheet_name)
-
-        self._notify_progress("完了", 100)
-        return ActionResult(
-            success=True,
-            message=f"スクレイピング完了: {len(df)} 行取得 → {output}",
-            data={"rows": len(df), "columns": len(df.columns), "output": output},
-        )
-
-    # ----------------------------------------------------------------
-    # Mode: browser_session (Level 3 - 認証必要・テーブル取得)
-    # ----------------------------------------------------------------
-    def _scrape_browser_session(
-        self, url: str, output: str, sheet_name: str, params: Dict[str, Any]
-    ) -> ActionResult:
-        """
-        既存ブラウザセッションに接続してスクレーピング
-
-        ユーザーが手動でログイン済みのブラウザに接続し、
-        そのセッション（Cookie/認証状態）を利用してデータを取得する。
-
-        前提: Chrome を --remote-debugging-port=9222 で起動済み
-        """
-        import pandas as pd
-        from playwright.sync_api import sync_playwright
-
-        cdp_url = params.get("cdp_url", "http://localhost:9222")
-        wait_selector = params.get("wait_selector", "table")
-        table_selector = params.get("table_selector", "table")
-        table_index = params.get("table_index", 0)
-
-        self._notify_progress("ブラウザに接続中...", 10)
-
-        with sync_playwright() as pw:
-            # 既存の Chrome に CDP で接続
-            browser = pw.chromium.connect_over_cdp(cdp_url)
-            context = browser.contexts[0]
-
-            # 新しいタブでURLを開く
-            page = context.new_page()
-
-            self._notify_progress("ページを開いています...", 20)
-            page.goto(url, wait_until="networkidle")
-
-            # 要素の出現を待つ
-            self._notify_progress("データの読み込みを待機中...", 40)
-            page.wait_for_selector(wait_selector, timeout=30000)
-
-            # フォーム操作（日付入力など）
-            form_fills = params.get("form_fills", [])
-            for fill in form_fills:
-                selector = fill.get("selector", "")
-                value = fill.get("value", "")
-                action = fill.get("action", "fill")
-
-                if action == "fill":
-                    page.fill(selector, value)
-                elif action == "select":
-                    page.select_option(selector, value)
-                elif action == "click":
-                    page.click(selector)
-
-                # 操作後の待機
-                wait_after = fill.get("wait_after", 500)
-                page.wait_for_timeout(wait_after)
-
-            # 送信ボタンのクリック
-            submit_button = params.get("submit_button", "")
-            if submit_button:
-                self._notify_progress("データを取得中...", 60)
-                page.click(submit_button)
-                page.wait_for_load_state("networkidle")
-                page.wait_for_selector(wait_selector, timeout=30000)
-
-            # テーブルデータを取得
-            self._notify_progress("テーブルを抽出中...", 80)
-            html = page.inner_html(table_selector)
-
-            tables = pd.read_html(f"<table>{html}</table>")
-            if not tables:
-                page.close()
-                return ActionResult(
-                    success=False,
-                    message="テーブルが見つかりませんでした",
-                    error="No tables found",
-                )
-
-            idx = min(table_index, len(tables) - 1)
-            df = tables[idx]
-
-            page.close()
-
-        # 出力
-        if output:
-            self._write_output(df, output, sheet_name)
-
-        self._notify_progress("完了", 100)
-        return ActionResult(
-            success=True,
-            message=f"ブラウザスクレイピング完了: {len(df)} 行取得",
-            data={"rows": len(df), "columns": len(df.columns), "output": output},
-        )
+    # モード廃止。ブラウザCSVダウンロードに統合
 
     # ----------------------------------------------------------------
     # Mode: browser_csv (Level 4 - 認証必要・CSVダウンロード操作)
@@ -375,11 +144,16 @@ class ScrapingAction(ActionBase):
                 # ダウンロード完了を待つ
                 downloaded_path = download.path()
 
+                # 指定された出力先に保存または移動
+                final_path = ""
                 if output:
-                    # 指定された出力先に移動
-                    import shutil
-                    shutil.move(str(downloaded_path), output)
-                    final_path = output
+                    if str(output).lower().endswith(('.xlsx', '.xls')):
+                        # Excel転記機能（プラグイン機能の統合）
+                        final_path = self._transfer_to_excel(downloaded_path, output, params)
+                    else:
+                        import shutil
+                        shutil.copy(str(downloaded_path), output)
+                        final_path = output
                 else:
                     # デフォルトのダウンロード先
                     suggested = download.suggested_filename
@@ -436,6 +210,44 @@ class ScrapingAction(ActionBase):
                     message="CSVダウンロードタイムアウト",
                     error=f"Timeout after {download_timeout}s",
                 )
+
+    def _transfer_to_excel(self, csv_path: Path, excel_path: str, params: Dict[str, Any]) -> str:
+        """ダウンロードしたCSVをExcelに転記する (Windows COM使用)"""
+        import platform
+        if platform.system() != "Windows":
+            logger.warning("Windows COM転記はWindows上でのみ動作します。CSVをそのまま保存します。")
+            import shutil
+            # Excelではないが、とりあえず output にコピー
+            shutil.copy(str(csv_path), excel_path)
+            return excel_path
+
+        import win32com.client
+        sheet_name = params.get("sheet_name", "Sheet1")
+        try:
+            excel = win32com.client.Dispatch("Excel.Application")
+            excel.Visible = True
+            wb = excel.Workbooks.Open(str(Path(excel_path).absolute()))
+            
+            # CSVを開いてコピー
+            csv_wb = excel.Workbooks.Open(str(csv_path.absolute()), Format=2, Local=True)
+            csv_wb.Sheets(1).UsedRange.Copy()
+            
+            # 転記
+            try:
+                target_ws = wb.Sheets(sheet_name)
+            except:
+                target_ws = wb.Sheets.Add()
+                target_ws.Name = sheet_name
+            
+            target_ws.Range("A1").PasteSpecial(Paste=-4163) # xlPasteValues
+            excel.CutCopyMode = False
+            csv_wb.Close(False)
+            
+            wb.Save()
+            return excel_path
+        except Exception as e:
+            logger.error(f"Excel転記失敗: {e}")
+            raise
 
     # ----------------------------------------------------------------
     # ユーティリティ

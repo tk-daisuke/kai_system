@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>kai_system - 設定エディタ</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        /* ===== エディタ専用スタイル ===== */
+        .editor-wrap {
+            display: flex;
+            gap: 0;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 左パネル */
+        .editor-sidebar {
+            width: 260px;
+            min-width: 260px;
+            background: var(--bg-card);
+            border-right: 1px solid var(--border);
+            overflow-y: auto;
+            padding: 16px 0;
+        }
+
+        .sidebar-section {
+            padding: 0 12px;
+            margin-bottom: 16px;
+        }
+
+        .sidebar-label {
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            color: var(--text-muted);
+            padding: 0 8px;
+            margin-bottom: 6px;
+        }
+
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            transition: background .15s, color .15s;
+            border: 1px solid transparent;
+        }
+
+        .sidebar-item:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .sidebar-item.active {
+            background: rgba(124, 108, 252, .15);
+            color: #a89cf7;
+            border-color: rgba(124, 108, 252, .3);
+        }
+
+        .sidebar-item .item-icon {
+            font-size: 1rem;
+            min-width: 20px;
+            text-align: center;
+        }
+
+        .sidebar-item .item-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .sidebar-item .item-badge {
+            font-size: 0.6rem;
+            padding: 1px 5px;
+            border-radius: 3px;
+            background: var(--bg-hover);
+            color: var(--text-muted);
+        }
+
+        .sidebar-add-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            margin: 4px 12px;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            color: var(--accent);
+            cursor: pointer;
+            border: 1px dashed rgba(124, 108, 252, .3);
+            background: transparent;
+            width: calc(100% - 24px);
+            transition: background .15s;
+        }
+
+        .sidebar-add-btn:hover {
+            background: rgba(124, 108, 252, .08);
+        }
+
+        .sidebar-divider {
+            height: 1px;
+            background: var(--border);
+            margin: 12px 12px;
+        }
+
+        /* 右パネル */
+        .editor-main {
+            flex: 1;
+            padding: 24px 32px;
+            overflow-y: auto;
+        }
+
+        .editor-empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            gap: 8px;
+        }
+
+        .editor-empty .icon {
+            font-size: 2.5rem;
+            opacity: .4;
+        }
+
+        /* フォーム */
+        .form-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .form-title .tag {
+            font-size: 0.65rem;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        .tag-action {
+            background: rgba(124, 108, 252, .15);
+            color: #a89cf7;
+        }
+
+        .tag-group {
+            background: rgba(63, 185, 80, .15);
+            color: #56d364;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px 20px;
+        }
+
+        .form-grid .full {
+            grid-column: 1 / -1;
+        }
+
+        .form-field {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .form-field label {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .form-field label .req {
+            color: #f85149;
+            font-size: 0.65rem;
+        }
+
+        .form-field input,
+        .form-field select,
+        .form-field textarea {
+            background: var(--bg-main);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 7px 10px;
+            font-size: 0.82rem;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', 'SF Mono', monospace;
+            transition: border-color .15s;
+        }
+
+        .form-field input:focus,
+        .form-field select:focus,
+        .form-field textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .form-field textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+
+        .form-field .help {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .form-field .tz-radio {
+            display: flex;
+            gap: 16px;
+            padding: 6px 0;
+        }
+
+        .form-field .tz-radio label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-weight: 400;
+        }
+
+        .form-field input[type="checkbox"] {
+            width: auto;
+            accent-color: var(--accent);
+        }
+
+        /* Array Field (form_fills) */
+        .array-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 8px;
+        }
+
+        .array-item {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+            background: var(--bg-hover);
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            position: relative;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .array-item-fields {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .array-remove-btn {
+            background: rgba(248, 81, 73, .1);
+            color: #f85149;
+            border: none;
+            cursor: pointer;
+            padding: 6px;
+            border-radius: 6px;
+            transition: all .15s;
+        }
+
+        .array-remove-btn:hover {
+            background: #f85149;
+            color: #fff;
+        }
+
+        .array-add-btn {
+            background: transparent;
+            color: var(--accent);
+            border: 1px dashed rgba(124, 108, 252, .3);
+            border-radius: 6px;
+            padding: 8px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 8px;
+            text-align: center;
+            transition: background .15s;
+        }
+
+        .array-add-btn:hover {
+            background: rgba(124, 108, 252, .08);
+        }
+
+        .form-section-title {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+            grid-column: 1 / -1;
+        }
+
+        /* ボタン */
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 24px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+        }
+
+        .btn {
+            padding: 8px 20px;
+            border-radius: 8px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: all .15s;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
+        .btn-primary:hover {
+            filter: brightness(1.15);
+        }
+
+        .btn-danger {
+            background: transparent;
+            color: #f85149;
+            border-color: rgba(248, 81, 73, .3);
+        }
+
+        .btn-danger:hover {
+            background: rgba(248, 81, 73, .1);
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-secondary);
+            border-color: var(--border);
+        }
+
+        .btn-ghost:hover {
+            background: var(--bg-hover);
+        }
+
+        /* ヘッダー */
+        .editor-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-card);
+        }
+
+        .editor-header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .editor-header .logo {
+            font-size: 1.1rem;
+            font-weight: 800;
+        }
+
+        .editor-header .logo span {
+            color: var(--accent);
+        }
+
+        .editor-header-right {
+            display: flex;
+            gap: 8px;
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 9999;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: opacity .3s, transform .3s;
+            pointer-events: none;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .toast-success {
+            background: rgba(63, 185, 80, .9);
+            color: #fff;
+        }
+
+        .toast-error {
+            background: rgba(248, 81, 73, .9);
+            color: #fff;
+        }
+
+        /* テンプレート変数ヘルプ */
+        .var-helper {
+            display: none;
+            position: absolute;
+            z-index: 100;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            width: 260px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, .4);
+        }
+
+        .var-helper.show {
+            display: block;
+        }
+
+        .var-helper-item {
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-family: monospace;
+            color: var(--text-secondary);
+        }
+
+        .var-helper-item:hover {
+            background: rgba(124, 108, 252, .15);
+            color: #a89cf7;
+        }
+
+        /* 確認ダイアログ */
+        .confirm-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, .6);
+            z-index: 999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .confirm-overlay.show {
+            display: flex;
+        }
+
+        .confirm-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 420px;
+            width: 90%;
+        }
+
+        .confirm-box h3 {
+            font-size: 1rem;
+            margin-bottom: 10px;
+        }
+
+        .confirm-box p {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 18px;
+        }
+
+        .confirm-box .btns {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ヘッダー -->
+    <div class="editor-header">
+        <div class="editor-header-left">
+            <div class="logo">⚡ kai_<span>system</span></div>
+            <span style="color:var(--text-muted); font-size:.82rem">⚙ 設定エディタ</span>
+        </div>
+        <div class="editor-header-right">
+            <button class="btn btn-ghost" onclick="location.href='/'">← ダッシュボードへ戻る</button>
+            <button class="btn btn-ghost" onclick="backupConfig()">📋 バックアップ</button>
+        </div>
+    </div>
+
+    <!-- メイン -->
+    <div class="editor-wrap">
+        <!-- 左パネル -->
+        <div class="editor-sidebar" id="sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-label">📁 グループ</div>
+                <div id="groupList"></div>
+                <button class="sidebar-add-btn" onclick="newGroup()">+ グループを追加</button>
+            </div>
+            <div class="sidebar-divider"></div>
+            <div class="sidebar-section">
+                <div class="sidebar-label">📋 アクション</div>
+                <div id="actionList"></div>
+                <button class="sidebar-add-btn" onclick="newAction()">+ アクションを追加</button>
+            </div>
+        </div>
+
+        <!-- 右パネル -->
+        <div class="editor-main" id="editorMain">
+            <div class="editor-empty">
+                <div class="icon">📝</div>
+                <div>左のリストからグループまたはアクションを選択してください</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <!-- 確認ダイアログ -->
+    <div class="confirm-overlay" id="confirmOverlay">
+        <div class="confirm-box">
+            <h3 id="confirmTitle">確認</h3>
+            <p id="confirmMessage"></p>
+            <div class="btns">
+                <button class="btn btn-ghost" onclick="closeConfirm()">キャンセル</button>
+                <button class="btn btn-danger" id="confirmOk">削除</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== State =====
+        let groups = [];
+        let actions = [];
+        let actionTypes = {};
+        let paramSchemas = {};
+        let selectedType = null; // 'group' or 'action'
+        let selectedId = null;
+
+        // ===== API helpers =====
+        async function api(url, method = 'GET', body = null) {
+            const opts = { method, headers: { 'Content-Type': 'application/json' } };
+            if (body) opts.body = JSON.stringify(body);
+            const res = await fetch(url, opts);
+            return res.json();
+        }
+
+        function showToast(msg, type = 'success') {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.className = `toast toast-${type} show`;
+            setTimeout(() => t.classList.remove('show'), 2500);
+        }
+
+        // ===== Load data =====
+        async function loadAll() {
+            const [aRes, gRes, tRes] = await Promise.all([
+                api('/api/config/actions'),
+                api('/api/config/groups'),
+                api('/api/config/action-types'),
+            ]);
+            actions = aRes.actions || [];
+            groups = gRes.groups || [];
+            actionTypes = tRes.types || [];
+            paramSchemas = tRes.schemas || {};
+            renderSidebar();
+        }
+
+        // ===== Sidebar =====
+        function renderSidebar() {
+            // Groups
+            const gl = document.getElementById('groupList');
+            gl.innerHTML = groups.map(g => `
+    <div class="sidebar-item ${selectedType === 'group' && selectedId === g.name ? 'active' : ''}"
+         onclick="selectGroup('${escHtml(g.name)}')">
+      <span class="item-icon">${escHtml(g.icon)}</span>
+      <span class="item-name">${escHtml(g.name)}</span>
+    </div>
+  `).join('');
+
+            // Actions
+            const al = document.getElementById('actionList');
+            al.innerHTML = actions.map(a => `
+    <div class="sidebar-item ${selectedType === 'action' && selectedId === a.id ? 'active' : ''}"
+         onclick="selectAction('${escHtml(a.id)}')">
+      <span class="item-icon">${escHtml(a.icon || '▶')}</span>
+      <span class="item-name">${escHtml(a.name)}</span>
+      <span class="item-badge">${escHtml(a.type)}</span>
+    </div>
+  `).join('');
+        }
+
+        function escHtml(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;'); }
+
+        // ===== Select items =====
+        function selectGroup(name) {
+            selectedType = 'group';
+            selectedId = name;
+            renderSidebar();
+            const g = groups.find(x => x.name === name);
+            if (g) renderGroupForm(g);
+        }
+
+        function selectAction(id) {
+            selectedType = 'action';
+            selectedId = id;
+            renderSidebar();
+            const a = actions.find(x => x.id === id);
+            if (a) renderActionForm(a);
+        }
+
+        // ===== Group form =====
+        function renderGroupForm(g) {
+            document.getElementById('editorMain').innerHTML = `
+    <div class="form-title">
+      <span class="tag tag-group">グループ</span>
+      ${escHtml(g.name)}
+    </div>
+    <div class="form-grid">
+      <div class="form-field">
+        <label>グループ名 <span class="req">*</span></label>
+        <input type="text" id="gName" value="${escHtml(g.name)}">
+      </div>
+      <div class="form-field">
+        <label>アイコン</label>
+        <input type="text" id="gIcon" value="${escHtml(g.icon)}" style="width:60px">
+      </div>
+      <div class="form-field">
+        <label>表示順</label>
+        <input type="number" id="gOrder" value="${g.display_order}" min="1">
+      </div>
+      <div class="form-field">
+        <label>カラー</label>
+        <input type="color" id="gColor" value="${g.color}" style="height:34px; width:60px; padding:2px">
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="saveGroup('${escHtml(g.name)}')">💾 保存</button>
+      <button class="btn btn-danger" onclick="confirmDelete('group', '${escHtml(g.name)}')">🗑 削除</button>
+    </div>
+  `;
+        }
+
+        // ===== Action form =====
+        function renderActionForm(a) {
+            const typeOptions = Object.entries(paramSchemas).map(([k, v]) =>
+                `<option value="${k}" ${a.type === k ? 'selected' : ''}>${v.label}</option>`
+            ).join('');
+
+            const groupOptions = ['<option value="">（未分類）</option>',
+                ...groups.map(g => `<option value="${escHtml(g.name)}" ${a.group === g.name ? 'selected' : ''}>${escHtml(g.name)}</option>`)
+            ].join('');
+
+            const schema = paramSchemas[a.type] || { fields: [] };
+            const paramsHtml = schema.fields.map(f => renderParamField(f, a.params || {})).join('');
+
+            document.getElementById('editorMain').innerHTML = `
+    <div class="form-title">
+      <span class="tag tag-action">アクション</span>
+      ${escHtml(a.name || '新規アクション')}
+    </div>
+    <div class="form-grid">
+      <div class="form-field">
+        <label>ID <span class="req">*</span></label>
+        <input type="text" id="aId" value="${escHtml(a.id)}" ${a.id ? '' : 'placeholder="例: sales_csv"'}>
+      </div>
+      <div class="form-field">
+        <label>名前 <span class="req">*</span></label>
+        <input type="text" id="aName" value="${escHtml(a.name)}" placeholder="例: 売上レポート取得">
+      </div>
+      <div class="form-field">
+        <label>タイプ <span class="req">*</span></label>
+        <select id="aType" onchange="onTypeChange()">${typeOptions}</select>
+      </div>
+      <div class="form-field">
+        <label>グループ</label>
+        <select id="aGroup">${groupOptions}</select>
+      </div>
+      <div class="form-field">
+        <label>アイコン</label>
+        <input type="text" id="aIcon" value="${escHtml(a.icon || '▶')}" style="width:60px">
+      </div>
+      <div class="form-field">
+        <label>表示順</label>
+        <input type="number" id="aOrder" value="${a.display_order}" min="1">
+      </div>
+      <div class="form-field">
+        <label>タイムゾーン</label>
+        <div class="tz-radio">
+          <label><input type="radio" name="aTz" value="jst" ${a.timezone !== 'utc' ? 'checked' : ''}> JST</label>
+          <label><input type="radio" name="aTz" value="utc" ${a.timezone === 'utc' ? 'checked' : ''}> UTC</label>
+        </div>
+      </div>
+      <div class="form-field">
+        <label style="flex-direction:row; gap:6px">
+          <input type="checkbox" id="aEnabled" ${a.enabled !== false ? 'checked' : ''}> 有効
+        </label>
+      </div>
+
+      <div class="form-section-title" id="paramsTitle">${escHtml(schema.label || a.type)} パラメータ</div>
+      <div class="form-grid full" id="paramsContainer">${paramsHtml}</div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="saveAction('${escHtml(a.id)}')">💾 保存</button>
+      ${a.id ? `<button class="btn btn-danger" onclick="confirmDelete('action', '${escHtml(a.id)}')">🗑 削除</button>` : ''}
+    </div>
+  `;
+            setTimeout(evaluateShowWhen, 10);
+        }
+
+        function renderParamField(f, params) {
+            const val = params[f.key] !== undefined ? params[f.key] : (f.default !== undefined ? f.default : '');
+            const req = f.required ? '<span class="req">*</span>' : '';
+            let input = '';
+
+            // For show_when logic, we need to add an ID to the wrapper and store data condition
+            const conditionAttr = f.show_when ? `data-show-when='${JSON.stringify(f.show_when)}'` : '';
+
+            switch (f.type) {
+                case 'select':
+                    const opts = (f.options || []).map(o => {
+                        const ov = typeof o === 'object' ? o.value : o;
+                        const ol = typeof o === 'object' ? o.label : o;
+                        return `<option value="${ov}" ${val == ov ? 'selected' : ''}>${escHtml(ol)}</option>`;
+                    }).join('');
+                    input = `<select id="p_${f.key}" onchange="evaluateShowWhen()">${opts}</select>`;
+                    break;
+                case 'bool':
+                    input = `<label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:.82rem">
+        <input type="checkbox" id="p_${f.key}" ${val ? 'checked' : ''} onchange="evaluateShowWhen()"> ${escHtml(f.label)}
+      </label>`;
+                    return `<div class="form-field" id="field_${f.key}" ${conditionAttr}>${input}</div>`;
+                case 'textarea':
+                    input = `<textarea id="p_${f.key}" placeholder="${escHtml(f.placeholder || '')}">${escHtml(String(val))}</textarea>`;
+                    break;
+                case 'number':
+                    input = `<input type="number" id="p_${f.key}" value="${val}">`;
+                    break;
+                case 'form_fills':
+                    const items = Array.isArray(val) ? val : [];
+                    const itemsHtml = items.map(item => renderArrayItem(f, item)).join('');
+                    input = `
+                        <div class="array-container" id="p_${f.key}">
+                            <div class="array-list" id="array_${f.key}">${itemsHtml}</div>
+                            <button type="button" class="btn btn-ghost" onclick="addArrayItem('${f.key}')" style="margin-top:8px; width:100%; border:1px dashed var(--border);">+ ステップを追加</button>
+                        </div>
+                    `;
+                    break;
+                default:
+                    input = `<input type="text" id="p_${f.key}" value="${escHtml(String(val))}" placeholder="${escHtml(f.placeholder || '')}">`;
+            }
+
+            const help = f.help ? `<div class="help">${escHtml(f.help)}</div>` : '';
+            return `<div class="form-field ${f.type === 'textarea' || f.type === 'url' || f.type === 'form_fills' ? 'full' : ''}" id="field_${f.key}" ${conditionAttr}>
+    <label>${escHtml(f.label)} ${req}</label>
+    ${input}${help}
+  </div>`;
+        }
+
+        function renderArrayItem(schemaF, itemData = {}) {
+            if (!schemaF || !schemaF.item_fields) return '';
+            let html = '<div class="array-item" style="display:flex;gap:8px;margin-bottom:8px;align-items:flex-start;">';
+            for (const subF of schemaF.item_fields) {
+                const subVal = itemData[subF.key] !== undefined ? itemData[subF.key] : (subF.default !== undefined ? subF.default : '');
+
+                let subInput = '';
+                if (subF.type === 'select') {
+                    const opts = (subF.options || []).map(o => {
+                        const ov = typeof o === 'object' ? o.value : o;
+                        const ol = typeof o === 'object' ? o.label : o;
+                        return `<option value="${ov}" ${subVal == ov ? 'selected' : ''}>${escHtml(ol)}</option>`;
+                    }).join('');
+                    subInput = `<select data-key="${subF.key}" style="flex:1" title="${escHtml(subF.label)}">${opts}</select>`;
+                } else if (subF.type === 'number') {
+                    subInput = `<input type="number" data-key="${subF.key}" value="${subVal}" style="flex:1; max-width:80px" title="${escHtml(subF.label)}" placeholder="${escHtml(subF.label)}">`;
+                } else {
+                    subInput = `<input type="text" data-key="${subF.key}" value="${escHtml(String(subVal))}" style="flex:2" placeholder="${escHtml(subF.placeholder || subF.label)}" title="${escHtml(subF.label)}">`;
+                }
+                html += subInput;
+            }
+            html += `<button type="button" class="btn btn-danger btn-sm" onclick="removeArrayItem(this)" style="padding:4px 8px;font-size:12px;margin-top:2px">✕</button></div>`;
+            return html;
+        }
+
+        function addArrayItem(key) {
+            const list = document.getElementById(`array_${key}`);
+            if (!list) return;
+            const type = document.getElementById('aType').value;
+            const schema = paramSchemas[type];
+            if (!schema) return;
+            const fieldSchema = schema.fields.find(f => f.key === key);
+            if (!fieldSchema) return;
+
+            const tmp = document.createElement('div');
+            tmp.innerHTML = renderArrayItem(fieldSchema, {});
+            list.appendChild(tmp.firstElementChild);
+        }
+
+        function removeArrayItem(btn) {
+            const item = btn.closest('.array-item');
+            if (item) item.remove();
+        }
+
+        function evaluateShowWhen() {
+            const aTypeEl = document.getElementById('aType');
+            if (!aTypeEl) return;
+            const type = aTypeEl.value;
+            const schema = paramSchemas[type] || { fields: [] };
+
+            const currentParams = {};
+            for (const f of schema.fields) {
+                if (f.type !== 'form_fills') {
+                    const el = document.getElementById(`p_${f.key}`);
+                    if (el) {
+                        currentParams[f.key] = el.type === 'checkbox' ? el.checked : el.value;
+                    }
+                }
+            }
+
+            document.querySelectorAll('[data-show-when]').forEach(el => {
+                try {
+                    const conditionStr = el.getAttribute('data-show-when');
+                    if (!conditionStr) return;
+                    const condition = JSON.parse(conditionStr);
+                    let show = true;
+                    for (const [key, allowedValues] of Object.entries(condition)) {
+                        const actualVal = currentParams[key];
+                        // If the dependency element doesn't exist yet, we might want to hide by default
+                        if (actualVal === undefined || !allowedValues.includes(actualVal)) {
+                            show = false;
+                            break;
+                        }
+                    }
+                    el.style.display = show ? '' : 'none';
+                } catch (e) {
+                    console.error("Error evaluating show_when condition", e, el);
+                }
+            });
+        }
+
+        function onTypeChange() {
+            const type = document.getElementById('aType').value;
+            const schema = paramSchemas[type] || { fields: [] };
+            document.getElementById('paramsTitle').textContent = `${schema.label || type} パラメータ`;
+            // Re-render params but keep any existing values from the current form
+            const currentParams = collectParams();
+            const html = schema.fields.map(f => renderParamField(f, currentParams)).join('');
+            document.getElementById('paramsContainer').innerHTML = html;
+            evaluateShowWhen();
+        }
+
+        function collectParams() {
+            const type = document.getElementById('aType').value;
+            const schema = paramSchemas[type] || { fields: [] };
+            const params = {};
+            for (const f of schema.fields) {
+                const fieldContainer = document.getElementById(`field_${f.key}`);
+                if (fieldContainer && fieldContainer.style.display === 'none') {
+                    continue; // Skip hidden condition fields
+                }
+
+                if (f.type === 'form_fills') {
+                    const list = document.getElementById(`array_${f.key}`);
+                    if (!list) continue;
+                    const items = [];
+                    list.querySelectorAll('.array-item').forEach(itemEl => {
+                        const itemObj = {};
+                        itemEl.querySelectorAll('input[data-key], select[data-key], textarea[data-key]').forEach(inputEl => {
+                            const k = inputEl.getAttribute('data-key');
+                            if (inputEl.type === 'number') {
+                                itemObj[k] = parseInt(inputEl.value) || 0;
+                            } else {
+                                itemObj[k] = inputEl.value;
+                            }
+                        });
+                        if (Object.keys(itemObj).length > 0) {
+                            items.push(itemObj);
+                        }
+                    });
+                    params[f.key] = items;
+                    continue;
+                }
+
+                const el = document.getElementById(`p_${f.key}`);
+                if (!el) continue;
+                if (f.type === 'bool') {
+                    params[f.key] = el.checked;
+                } else if (f.type === 'number') {
+                    params[f.key] = parseInt(el.value) || 0;
+                } else {
+                    const v = el.value.trim();
+                    // Always include even if empty for required fields or specific schema
+                    params[f.key] = v;
+                }
+            }
+            return params;
+        }
+
+        // ===== Save / Delete =====
+        async function saveGroup(originalName) {
+            const data = {
+                name: document.getElementById('gName').value.trim(),
+                icon: document.getElementById('gIcon').value.trim() || '📁',
+                display_order: parseInt(document.getElementById('gOrder').value) || 999,
+                color: document.getElementById('gColor').value,
+            };
+            if (!data.name) { showToast('グループ名を入力してください', 'error'); return; }
+
+            let res;
+            if (originalName === '__new__') {
+                res = await api('/api/config/groups', 'POST', data);
+            } else {
+                res = await api(`/api/config/groups/${encodeURIComponent(originalName)}`, 'PUT', data);
+            }
+
+            if (res.status === 'ok') {
+                showToast('グループを保存しました');
+                selectedId = data.name;
+                await loadAll();
+                selectGroup(data.name);
+            } else {
+                showToast(res.message || 'エラー', 'error');
+            }
+        }
+
+        async function saveAction(originalId) {
+            const data = {
+                id: document.getElementById('aId').value.trim(),
+                name: document.getElementById('aName').value.trim(),
+                type: document.getElementById('aType').value,
+                group: document.getElementById('aGroup').value,
+                icon: document.getElementById('aIcon').value.trim() || '▶',
+                display_order: parseInt(document.getElementById('aOrder').value) || 999,
+                timezone: document.querySelector('input[name="aTz"]:checked').value,
+                enabled: document.getElementById('aEnabled').checked,
+                params: collectParams(),
+            };
+
+            if (!data.id) { showToast('IDを入力してください', 'error'); return; }
+            if (!data.name) { showToast('名前を入力してください', 'error'); return; }
+
+            let res;
+            if (originalId === '__new__') {
+                res = await api('/api/config/actions', 'POST', data);
+            } else {
+                res = await api(`/api/config/actions/${encodeURIComponent(originalId)}`, 'PUT', data);
+            }
+
+            if (res.status === 'ok') {
+                showToast('アクションを保存しました');
+                selectedId = data.id;
+                await loadAll();
+                selectAction(data.id);
+            } else {
+                showToast(res.message || 'エラー', 'error');
+            }
+        }
+
+        // ===== New items =====
+        function newGroup() {
+            selectedType = 'group';
+            selectedId = '__new__';
+            renderSidebar();
+            renderGroupForm({
+                name: '', icon: '📁',
+                display_order: groups.length + 1,
+                color: '#4CAF50',
+            });
+        }
+
+        function newAction() {
+            selectedType = 'action';
+            selectedId = '__new__';
+            renderSidebar();
+            renderActionForm({
+                id: '', name: '', type: 'csv_download', group: '',
+                icon: '▶', display_order: actions.length + 1,
+                timezone: 'jst', enabled: true, params: {},
+            });
+        }
+
+        // ===== Confirm delete =====
+        let pendingDeleteType = null;
+        let pendingDeleteId = null;
+
+        function confirmDelete(type, id) {
+            pendingDeleteType = type;
+            pendingDeleteId = id;
+            document.getElementById('confirmTitle').textContent = `${type === 'group' ? 'グループ' : 'アクション'}を削除`;
+            document.getElementById('confirmMessage').textContent =
+                `「${id}」を削除してもよろしいですか？この操作は元に戻せません（バックアップは自動作成されます）。`;
+            document.getElementById('confirmOk').onclick = doDelete;
+            document.getElementById('confirmOverlay').classList.add('show');
+        }
+
+        function closeConfirm() {
+            document.getElementById('confirmOverlay').classList.remove('show');
+        }
+
+        async function doDelete() {
+            closeConfirm();
+            let res;
+            if (pendingDeleteType === 'group') {
+                res = await api(`/api/config/groups/${encodeURIComponent(pendingDeleteId)}`, 'DELETE');
+            } else {
+                res = await api(`/api/config/actions/${encodeURIComponent(pendingDeleteId)}`, 'DELETE');
+            }
+            if (res.status === 'ok') {
+                showToast('削除しました');
+                selectedType = null;
+                selectedId = null;
+                await loadAll();
+                document.getElementById('editorMain').innerHTML = `
+      <div class="editor-empty"><div class="icon">📝</div><div>項目を選択してください</div></div>
+    `;
+            } else {
+                showToast(res.message || 'エラー', 'error');
+            }
+        }
+
+        // ===== Backup =====
+        async function backupConfig() {
+            const res = await api('/api/config/backup', 'POST');
+            if (res.status === 'ok') {
+                showToast(`バックアップ作成: ${res.timestamp}`);
+            }
+        }
+
+        // ===== Init =====
+        loadAll();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>kai_system マニュアル</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0d1117;
+            --bg2: #161b22;
+            --bg3: #21262d;
+            --border: #30363d;
+            --accent: #7c6cfc;
+            --accent2: #58a6ff;
+            --green: #3fb950;
+            --orange: #f0883e;
+            --red: #f85149;
+            --yellow: #d29922;
+            --text: #e6edf3;
+            --text2: #8b949e;
+            --text3: #6e7681;
+            --jst: #58a6ff;
+            --utc: #f0883e;
+            --week: #3fb950;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .hero {
+            text-align: center;
+            padding: 60px 20px 48px;
+            margin-bottom: 48px;
+            background: linear-gradient(135deg, #1a1f2e 0%, #161b22 100%);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -60px;
+            left: -60px;
+            width: 240px;
+            height: 240px;
+            background: radial-gradient(circle, rgba(124, 108, 252, 0.15) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .hero::after {
+            content: '';
+            position: absolute;
+            bottom: -60px;
+            right: -60px;
+            width: 200px;
+            height: 200px;
+            background: radial-gradient(circle, rgba(88, 166, 255, 0.12) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .hero-logo {
+            font-size: 2.8rem;
+            font-weight: 800;
+            letter-spacing: -1px;
+        }
+
+        .hero-logo span {
+            color: var(--accent);
+        }
+
+        .hero-sub {
+            color: var(--text2);
+            margin-top: 8px;
+            font-size: 1rem;
+        }
+
+        .hero-badges {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            margin-top: 18px;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            padding: 4px 12px;
+            border-radius: 100px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            border: 1px solid;
+        }
+
+        .badge-purple {
+            background: rgba(124, 108, 252, .15);
+            border-color: rgba(124, 108, 252, .4);
+            color: #a89cf7;
+        }
+
+        .badge-blue {
+            background: rgba(88, 166, 255, .15);
+            border-color: rgba(88, 166, 255, .4);
+            color: #79b8ff;
+        }
+
+        .badge-green {
+            background: rgba(63, 185, 80, .15);
+            border-color: rgba(63, 185, 80, .4);
+            color: #56d364;
+        }
+
+        .badge-orange {
+            background: rgba(240, 136, 62, .15);
+            border-color: rgba(240, 136, 62, .4);
+            color: #f0a868;
+        }
+
+        /* Section */
+        .section {
+            margin-bottom: 48px;
+        }
+
+        .section-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .section-title .icon {
+            font-size: 1.4rem;
+        }
+
+        /* Card grid */
+        .card-grid {
+            display: grid;
+            gap: 16px;
+        }
+
+        .card-grid-2 {
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .card-grid-3 {
+            grid-template-columns: 1fr 1fr 1fr;
+        }
+
+        @media (max-width: 640px) {
+
+            .card-grid-2,
+            .card-grid-3 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .card-header {
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            color: var(--text2);
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .card-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        /* Variable table */
+        .var-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .var-table th {
+            text-align: left;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text3);
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            padding: 0 8px 10px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .var-table td {
+            padding: 8px 8px;
+            border-bottom: 1px solid #21262d;
+            vertical-align: top;
+        }
+
+        .var-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.78rem;
+            background: var(--bg3);
+            padding: 2px 6px;
+            border-radius: 4px;
+            white-space: nowrap;
+        }
+
+        .var-name code {
+            color: #a89cf7;
+        }
+
+        .var-example {
+            color: var(--text2);
+            font-size: 0.78rem;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .var-desc {
+            color: var(--text2);
+            font-size: 0.82rem;
+        }
+
+        /* TZ pill */
+        .tz-jst {
+            color: var(--jst);
+            font-size: 0.68rem;
+            font-weight: 700;
+            background: rgba(88, 166, 255, .12);
+            padding: 1px 6px;
+            border-radius: 4px;
+        }
+
+        .tz-utc {
+            color: var(--utc);
+            font-size: 0.68rem;
+            font-weight: 700;
+            background: rgba(240, 136, 62, .12);
+            padding: 1px 6px;
+            border-radius: 4px;
+        }
+
+        .tz-both {
+            color: var(--text2);
+            font-size: 0.68rem;
+            font-weight: 600;
+            background: var(--bg3);
+            padding: 1px 6px;
+            border-radius: 4px;
+        }
+
+        .tz-week {
+            color: var(--week);
+            font-size: 0.68rem;
+            font-weight: 700;
+            background: rgba(63, 185, 80, .12);
+            padding: 1px 6px;
+            border-radius: 4px;
+        }
+
+        /* UI Diagram */
+        .ui-diagram {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+        }
+
+        .ui-period-bar {
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px 20px;
+            font-size: 0.85rem;
+        }
+
+        .ui-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .ui-field {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .ui-label {
+            font-size: 0.65rem;
+            font-weight: 700;
+            color: var(--text2);
+        }
+
+        .ui-label .jst-hint {
+            color: var(--jst);
+            margin-left: 4px;
+            font-size: 0.6rem;
+        }
+
+        .ui-input {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 0.8rem;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text);
+            width: 160px;
+        }
+
+        .ui-arrow {
+            color: var(--text3);
+            font-size: 1rem;
+        }
+
+        .ui-divider {
+            color: var(--border);
+            margin: 0 4px;
+        }
+
+        .ui-presets {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+            align-items: center;
+        }
+
+        .ui-btn {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text2);
+            cursor: pointer;
+        }
+
+        .ui-btn-active {
+            background: rgba(124, 108, 252, .2);
+            border-color: rgba(124, 108, 252, .5);
+            color: #a89cf7;
+        }
+
+        .ui-sep {
+            color: var(--border);
+            font-size: 0.8rem;
+        }
+
+        .ui-week-group {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .ui-week-label {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--text2);
+        }
+
+        .ui-week-input {
+            width: 42px;
+            height: 26px;
+            border-radius: 5px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            text-align: center;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.78rem;
+            color: var(--text);
+            padding: 0 4px;
+        }
+
+        .ui-year-input {
+            width: 54px;
+            height: 26px;
+            border-radius: 5px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            text-align: center;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            color: var(--text2);
+            padding: 0 4px;
+        }
+
+        .ui-tz-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: auto;
+        }
+
+        .ui-tz-label {
+            font-size: 0.7rem;
+            color: var(--text3);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .ui-toggle-wrap {
+            display: flex;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            overflow: hidden;
+            font-size: 0.72rem;
+            font-weight: 700;
+        }
+
+        .ui-toggle-opt {
+            padding: 3px 10px;
+            cursor: pointer;
+            color: var(--text3);
+        }
+
+        .ui-toggle-opt.active {
+            background: rgba(88, 166, 255, .2);
+            color: var(--jst);
+        }
+
+        .ui-conv-bar {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border);
+            font-size: 0.72rem;
+            color: var(--text2);
+            font-family: 'JetBrains Mono', monospace;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .ui-conv-label {
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        /* Callout */
+        .callout {
+            border-radius: 8px;
+            padding: 14px 18px;
+            margin-top: 16px;
+            font-size: 0.85rem;
+            border-left: 3px solid;
+        }
+
+        .callout-info {
+            background: rgba(88, 166, 255, .08);
+            border-color: var(--accent2);
+            color: #79b8ff;
+        }
+
+        .callout-warn {
+            background: rgba(240, 136, 62, .08);
+            border-color: var(--orange);
+            color: #f0a868;
+        }
+
+        .callout-tip {
+            background: rgba(63, 185, 80, .08);
+            border-color: var(--green);
+            color: #56d364;
+        }
+
+        /* Flow */
+        .flow {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin: 16px 0;
+        }
+
+        .flow-node {
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 16px;
+            font-size: 0.82rem;
+            text-align: center;
+        }
+
+        .flow-node strong {
+            display: block;
+            font-size: 0.92rem;
+        }
+
+        .flow-arrow {
+            color: var(--text3);
+            font-size: 1.2rem;
+        }
+
+        /* YAML example */
+        .yaml-block {
+            background: #0d1117;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            line-height: 1.7;
+            overflow-x: auto;
+        }
+
+        .y-key {
+            color: #79b8ff;
+        }
+
+        .y-val {
+            color: #a5d6ff;
+        }
+
+        .y-str {
+            color: #a8d8a0;
+        }
+
+        .y-cmt {
+            color: var(--text3);
+            font-style: italic;
+        }
+
+        .y-var {
+            color: #d2a8ff;
+        }
+
+        .y-head {
+            color: #f0883e;
+            font-weight: 600;
+        }
+
+        footer {
+            text-align: center;
+            padding: 32px;
+            color: var(--text3);
+            font-size: 0.78rem;
+            border-top: 1px solid var(--border);
+            margin-top: 48px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+
+        <!-- Hero -->
+        <div class="hero">
+            <div class="hero-logo">⚡ kai_<span>system</span></div>
+            <div class="hero-sub">テンプレート変数 &amp; UI リファレンス</div>
+            <div class="hero-badges">
+                <span class="badge badge-purple">テンプレート変数 20+</span>
+                <span class="badge badge-blue">JST / UTC 二重対応</span>
+                <span class="badge badge-green">週番号 (WEEKNUM互換)</span>
+                <span class="badge badge-orange">シフトプリセット</span>
+            </div>
+        </div>
+
+        <!-- UI Overview -->
+        <div class="section">
+            <div class="section-title"><span class="icon">🖥</span> 期間バー UI</div>
+            <div class="ui-diagram">
+                <div class="ui-period-bar">
+                    <div class="ui-row">
+                        <div class="ui-field">
+                            <div class="ui-label">FROM <span class="jst-hint">JST</span></div>
+                            <div class="ui-input">2026/02/22 00:00</div>
+                        </div>
+                        <div class="ui-arrow">→</div>
+                        <div class="ui-field">
+                            <div class="ui-label">TO <span class="jst-hint">JST</span></div>
+                            <div class="ui-input">2026/02/23 00:00</div>
+                        </div>
+                        <div class="ui-tz-toggle">
+                            <span class="ui-tz-label">{from} =</span>
+                            <div class="ui-toggle-wrap">
+                                <div class="ui-toggle-opt active">JST</div>
+                                <div class="ui-toggle-opt">UTC</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="ui-presets">
+                        <button class="ui-btn ui-btn-active">昨日分</button>
+                        <button class="ui-btn">2日前</button>
+                        <button class="ui-btn">先週</button>
+                        <span class="ui-sep">|</span>
+                        <button class="ui-btn">☀ 日勤</button>
+                        <button class="ui-btn">🌙 夜勤</button>
+                        <span class="ui-sep">|</span>
+                        <button class="ui-btn">今月</button>
+                        <span class="ui-sep">|</span>
+                        <div class="ui-week-group">
+                            <span class="ui-week-label">🗓 W</span>
+                            <input class="ui-week-input" value="9" readonly>
+                            <input class="ui-year-input" value="2026" readonly>
+                            <button class="ui-btn">→</button>
+                        </div>
+                    </div>
+                    <div class="ui-conv-bar">
+                        <span><span class="ui-conv-label">UTC:</span> 2/21 15:00 → 2/22 15:00</span>
+                        <span class="ui-sep">|</span>
+                        <span><span class="ui-conv-label">W:</span> 9</span>
+                    </div>
+                </div>
+
+                <div class="callout callout-info" style="margin-top:16px">
+                    ⓘ <strong>入力は常にJST。</strong> From/To ピッカーに入力する時刻はすべてJSTとして扱われます。TZトグルは <code>{from}</code> /
+                    <code>{to}</code> などの汎用変数が JST と UTC のどちらの形式で展開されるかを切り替えます。
+                </div>
+            </div>
+
+            <!-- Presets table -->
+            <div class="card" style="margin-top:16px">
+                <div class="card-header"><span class="card-dot" style="background:#a89cf7"></span> プリセット一覧</div>
+                <table class="var-table">
+                    <thead>
+                        <tr>
+                            <th>ボタン</th>
+                            <th>From</th>
+                            <th>To</th>
+                            <th>用途</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>昨日分</code></td>
+                            <td>昨日 00:00</td>
+                            <td>今日 00:00</td>
+                            <td class="var-desc">通常の日次バッチ</td>
+                        </tr>
+                        <tr>
+                            <td><code>2日前</code></td>
+                            <td>一昨日 00:00</td>
+                            <td>昨日 00:00</td>
+                            <td class="var-desc">前日の再取得</td>
+                        </tr>
+                        <tr>
+                            <td><code>先週</code></td>
+                            <td>先週日曜 00:00</td>
+                            <td>今週日曜 00:00</td>
+                            <td class="var-desc">週次集計</td>
+                        </tr>
+                        <tr>
+                            <td><code>☀ 日勤</code></td>
+                            <td>今日 07:00</td>
+                            <td>今日 19:00</td>
+                            <td class="var-desc">日勤シフト</td>
+                        </tr>
+                        <tr>
+                            <td><code>🌙 夜勤</code></td>
+                            <td>昨日 19:00</td>
+                            <td>今日 07:00</td>
+                            <td class="var-desc">夜勤シフト</td>
+                        </tr>
+                        <tr>
+                            <td><code>今月</code></td>
+                            <td>1日 00:00</td>
+                            <td>今日 00:00</td>
+                            <td class="var-desc">月次集計</td>
+                        </tr>
+                        <tr>
+                            <td><code>🗓 W [n]</code></td>
+                            <td>第n週 日曜 00:00</td>
+                            <td>第n+1週 日曜 00:00</td>
+                            <td class="var-desc">週番号指定</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Variables Reference -->
+        <div class="section">
+            <div class="section-title"><span class="icon">📋</span> テンプレート変数リファレンス</div>
+
+            <!-- FROM variables -->
+            <div class="card-grid card-grid-2" style="margin-bottom:16px">
+                <div class="card">
+                    <div class="card-header"><span class="card-dot" style="background:var(--jst)"></span> FROM 系 — JST
+                    </div>
+                    <table class="var-table">
+                        <thead>
+                            <tr>
+                                <th>変数</th>
+                                <th>例</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="var-name"><code>{from_jst}</code></td>
+                                <td class="var-example">2026-02-22T00:00:00+09:00</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{from_jst_short}</code></td>
+                                <td class="var-example">20260222_000000</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{from_jst_date}</code></td>
+                                <td class="var-example">2026-02-22</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{from_jst_jp}</code></td>
+                                <td class="var-example">2026年02月22日</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{from_jst_time}</code></td>
+                                <td class="var-example">00:00:00</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="card">
+                    <div class="card-header"><span class="card-dot" style="background:var(--utc)"></span> FROM 系 — UTC
+                    </div>
+                    <table class="var-table">
+                        <thead>
+                            <tr>
+                                <th>変数</th>
+                                <th>例</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="var-name"><code>{from_utc}</code></td>
+                                <td class="var-example">2026-02-21T15:00:00Z</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{from_utc_short}</code></td>
+                                <td class="var-example">20260221_150000</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{from_utc_date}</code></td>
+                                <td class="var-example">2026-02-21</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{from_utc_jp}</code></td>
+                                <td class="var-example">2026年02月21日</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{from_utc_time}</code></td>
+                                <td class="var-example">15:00:00</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TO variables -->
+            <div class="card-grid card-grid-2" style="margin-bottom:16px">
+                <div class="card">
+                    <div class="card-header"><span class="card-dot" style="background:var(--jst)"></span> TO 系 — JST
+                    </div>
+                    <table class="var-table">
+                        <thead>
+                            <tr>
+                                <th>変数</th>
+                                <th>例</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="var-name"><code>{to_jst}</code></td>
+                                <td class="var-example">2026-02-23T00:00:00+09:00</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{to_jst_short}</code></td>
+                                <td class="var-example">20260223_000000</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{to_jst_date}</code></td>
+                                <td class="var-example">2026-02-23</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{to_jst_jp}</code></td>
+                                <td class="var-example">2026年02月23日</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{to_jst_time}</code></td>
+                                <td class="var-example">00:00:00</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="card">
+                    <div class="card-header"><span class="card-dot" style="background:var(--utc)"></span> TO 系 — UTC
+                    </div>
+                    <table class="var-table">
+                        <thead>
+                            <tr>
+                                <th>変数</th>
+                                <th>例</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="var-name"><code>{to_utc}</code></td>
+                                <td class="var-example">2026-02-22T15:00:00Z</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{to_utc_short}</code></td>
+                                <td class="var-example">20260222_150000</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{to_utc_date}</code></td>
+                                <td class="var-example">2026-02-22</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{to_utc_jp}</code></td>
+                                <td class="var-example">2026年02月22日</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{to_utc_time}</code></td>
+                                <td class="var-example">15:00:00</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Generic + others -->
+            <div class="card-grid card-grid-3">
+                <div class="card">
+                    <div class="card-header"><span class="card-dot" style="background:var(--accent)"></span> 汎用（TZトグル連動）
+                    </div>
+                    <table class="var-table">
+                        <thead>
+                            <tr>
+                                <th>変数</th>
+                                <th>説明</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="var-name"><code>{from}</code></td>
+                                <td class="var-desc">トグルに応じJSTまたはUTC形式</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{to}</code></td>
+                                <td class="var-desc">同上（To側）</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{from_date}</code></td>
+                                <td class="var-desc">日付のみ（YYYY-MM-DD）</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{to_date}</code></td>
+                                <td class="var-desc">同上（To側）</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{from_date_jp}</code></td>
+                                <td class="var-desc">日本語日付（From）</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{to_date_jp}</code></td>
+                                <td class="var-desc">日本語日付（To）</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="card">
+                    <div class="card-header"><span class="card-dot" style="background:var(--week)"></span> 週番号</div>
+                    <table class="var-table">
+                        <thead>
+                            <tr>
+                                <th>変数</th>
+                                <th>説明</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="var-name"><code>{week}</code></td>
+                                <td class="var-desc">To基準 WEEKNUM（日曜始まり）</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{week02}</code></td>
+                                <td class="var-desc">ゼロ埋め2桁</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{week_iso}</code></td>
+                                <td class="var-desc">To基準 ISO週番号（月曜始まり）</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{week_iso02}</code></td>
+                                <td class="var-desc">ゼロ埋め2桁</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{from_week}</code></td>
+                                <td class="var-desc">From基準 WEEKNUM（日曜始まり）</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{from_week_iso}</code></td>
+                                <td class="var-desc">From基準 ISO週番号</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="card">
+                    <div class="card-header"><span class="card-dot" style="background:var(--yellow)"></span> その他</div>
+                    <table class="var-table">
+                        <thead>
+                            <tr>
+                                <th>変数</th>
+                                <th>説明</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="var-name"><code>{from_epoch}</code></td>
+                                <td class="var-desc">Unixタイムスタンプ（From）</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{to_epoch}</code></td>
+                                <td class="var-desc">Unixタイムスタンプ（To）</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{today}</code></td>
+                                <td class="var-desc">今日 YYYY-MM-DD</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{yesterday}</code></td>
+                                <td class="var-desc">昨日 YYYY-MM-DD</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{first_day}</code></td>
+                                <td class="var-desc">今月1日 YYYY-MM-DD</td>
+                            </tr>
+                            <tr>
+                                <td class="var-name"><code>{last_day}</code></td>
+                                <td class="var-desc">今月末日 YYYY-MM-DD</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TZ Mode -->
+        <div class="section">
+            <div class="section-title"><span class="icon">🌏</span> タイムゾーン設定</div>
+            <div class="card-grid card-grid-2">
+                <div class="card">
+                    <div class="card-header"><span class="card-dot" style="background:var(--accent)"></span>
+                        UIトグル（グローバル）</div>
+                    <p class="var-desc" style="margin-bottom:12px">期間バー右の <code>{from} =</code>
+                        トグルで、<strong>汎用変数</strong>（<code>{from}</code> / <code>{to}</code> / <code>{from_date}</code>
+                        など）がJSTとUTCのどちらで展開されるかを切り替えます。</p>
+                    <div class="flow">
+                        <div class="flow-node"><strong>JST</strong>2026-02-22T00:00:00+09:00</div>
+                        <div class="flow-arrow">↔</div>
+                        <div class="flow-node"><strong>UTC</strong>2026-02-21T15:00:00Z</div>
+                    </div>
+                    <div class="callout callout-info">明示的な <code>{from_jst}</code> / <code>{from_utc}</code>
+                        はトグルに関係なく常に使用できます。</div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><span class="card-dot" style="background:var(--utc)"></span> アクション別
+                        timezone 設定</div>
+                    <p class="var-desc" style="margin-bottom:12px"><code>actions.yaml</code> の <code>timezone</code>
+                        フィールドでアクション単位に固定できます。UIトグルより優先されます。</p>
+                    <div class="yaml-block"><span class="y-head">- id:</span> <span
+                            class="y-str">dashboard_scrape</span>
+                        <span class="y-key">name:</span> <span class="y-str">ダッシュボードデータ取得</span>
+                        <span class="y-key">type:</span> <span class="y-str">scraper</span>
+                        <span class="y-key">timezone:</span> <span class="y-str">utc</span> <span class="y-cmt"># ← jst
+                            or utc</span>
+                        <span class="y-key">params:</span>
+                        <span class="y-key">url:</span> <span class="y-str">"https://api.example.com/data
+                            ?from=<span class="y-var">{from}</span>&amp;to=<span class="y-var">{to}</span>"</span>
+                    </div>
+                    <div class="callout callout-warn" style="margin-top:12px">UIバッジ <code
+                            style="background:rgba(240,136,62,.2);color:#f0883e">UTC</code> はこのアクションがUTC固定であることを示します。
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- YAML examples -->
+        <div class="section">
+            <div class="section-title"><span class="icon">📝</span> actions.yaml 使用例</div>
+            <div class="card">
+                <div class="yaml-block"><span class="y-cmt"># ─── 週番号でファイル名を生成する例 ───</span>
+                    <span class="y-head">- id:</span> <span class="y-str">weekly_report</span>
+                    <span class="y-key">name:</span> <span class="y-str">週次レポート取得</span>
+                    <span class="y-key">type:</span> <span class="y-str">csv_download</span>
+                    <span class="y-key">timezone:</span> <span class="y-str">jst</span>
+                    <span class="y-key">params:</span>
+                    <span class="y-key">url:</span> <span class="y-str">"https://example.com/report?week=<span
+                            class="y-var">{week02}</span>&amp;year=<span class="y-var">{from_jst_date}</span>"</span>
+                    <span class="y-key">filename:</span> <span class="y-str">"report_W<span
+                            class="y-var">{week02}</span>_<span class="y-var">{from_jst_date}</span>.csv"</span>
+
+                    <span class="y-cmt"># ─── UTC の Epoch タイムスタンプをAPIに渡す例 ───</span>
+                    <span class="y-head">- id:</span> <span class="y-str">api_export</span>
+                    <span class="y-key">name:</span> <span class="y-str">API集計エクスポート</span>
+                    <span class="y-key">type:</span> <span class="y-str">shell_cmd</span>
+                    <span class="y-key">timezone:</span> <span class="y-str">utc</span>
+                    <span class="y-key">params:</span>
+                    <span class="y-key">cmd:</span> <span class="y-str">"curl 'https://api.example.com/export
+                        ?start=<span class="y-var">{from_epoch}</span>&amp;end=<span
+                            class="y-var">{to_epoch}</span>'"</span>
+
+                    <span class="y-cmt"># ─── 日勤シフトをJSTファイル名付きで保存する例 ───</span>
+                    <span class="y-head">- id:</span> <span class="y-str">shift_data</span>
+                    <span class="y-key">name:</span> <span class="y-str">シフトデータ取得</span>
+                    <span class="y-key">type:</span> <span class="y-str">csv_download</span>
+                    <span class="y-key">params:</span>
+                    <span class="y-key">url:</span> <span class="y-str">"https://example.com/shift
+                        ?from=<span class="y-var">{from_jst_short}</span>&amp;to=<span
+                            class="y-var">{to_jst_short}</span>"</span>
+                    <span class="y-key">filename:</span> <span class="y-str">"shift_<span
+                            class="y-var">{from_jst_date}</span>_<span class="y-var">{from_jst_time}</span>.csv"</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Week number rules -->
+        <div class="section">
+            <div class="section-title"><span class="icon">📅</span> 週番号のルール</div>
+            <div class="card-grid card-grid-2">
+                <div class="card">
+                    <div class="card-header"><span class="card-dot" style="background:var(--week)"></span> WEEKNUM
+                        互換（日曜始まり）</div>
+                    <table class="var-table">
+                        <thead>
+                            <tr>
+                                <th>ルール</th>
+                                <th>内容</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>第1週</td>
+                                <td class="var-desc">1月1日が属する週</td>
+                            </tr>
+                            <tr>
+                                <td>週の開始</td>
+                                <td class="var-desc"><strong>日曜日</strong></td>
+                            </tr>
+                            <tr>
+                                <td>互換</td>
+                                <td class="var-desc">Excel <code>WEEKNUM(date, 1)</code></td>
+                            </tr>
+                            <tr>
+                                <td>変数</td>
+                                <td class="var-desc"><code>{week}</code>, <code>{week02}</code>,
+                                    <code>{from_week}</code></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div class="callout callout-tip">UIの週番号入力フィールドもこのルールで動作します。</div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><span class="card-dot" style="background:var(--accent2)"></span> ISO
+                        8601（月曜始まり）</div>
+                    <table class="var-table">
+                        <thead>
+                            <tr>
+                                <th>ルール</th>
+                                <th>内容</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>第1週</td>
+                                <td class="var-desc">その年最初の木曜が属する週</td>
+                            </tr>
+                            <tr>
+                                <td>週の開始</td>
+                                <td class="var-desc"><strong>月曜日</strong></td>
+                            </tr>
+                            <tr>
+                                <td>互換</td>
+                                <td class="var-desc">ISO 8601 / Excel <code>ISOWEEKNUM</code></td>
+                            </tr>
+                            <tr>
+                                <td>変数</td>
+                                <td class="var-desc"><code>{week_iso}</code>, <code>{week_iso02}</code>,
+                                    <code>{from_week_iso}</code></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div class="callout callout-info">年末年始は年番号が前後の年になる場合があります。</div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            kai_system docs &nbsp;·&nbsp; template variables reference &nbsp;·&nbsp; built with ⚡
+        </footer>
+
+    </div>
+</body>
+
+</html>

@@ -4,7 +4,9 @@ kai_system - YAML設定管理モジュール
 actions.yaml / groups.yaml からタスク設定を読み込む
 """
 
+import shutil
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -36,6 +38,22 @@ class ActionConfig:
         self.icon: str = data.get("icon", "▶")
         self._raw = data
 
+    def to_dict(self) -> Dict[str, Any]:
+        """YAML書き出し用の辞書を返す"""
+        d: Dict[str, Any] = {"id": self.id, "name": self.name, "type": self.type}
+        if self.group:
+            d["group"] = self.group
+        if self.icon and self.icon != "▶":
+            d["icon"] = self.icon
+        if self.timezone != "jst":
+            d["timezone"] = self.timezone
+        d["display_order"] = self.display_order
+        if not self.enabled:
+            d["enabled"] = False
+        if self.params:
+            d["params"] = dict(self.params)
+        return d
+
     def __repr__(self) -> str:
         return f"ActionConfig(id={self.id!r}, name={self.name!r}, type={self.type!r}, group={self.group!r})"
 
@@ -49,6 +67,15 @@ class GroupConfig:
         self.color: str = data.get("color", "#4CAF50")
         self.icon: str = data.get("icon", "📁")
         self._raw = data
+
+    def to_dict(self) -> Dict[str, Any]:
+        """YAML書き出し用の辞書を返す"""
+        return {
+            "name": self.name,
+            "display_order": self.display_order,
+            "color": self.color,
+            "icon": self.icon,
+        }
 
     def __repr__(self) -> str:
         return f"GroupConfig(name={self.name!r}, order={self.display_order})"
@@ -200,3 +227,171 @@ class ConfigManager:
             logger.info("全アクションの設定チェック: OK")
 
         return issues
+
+    # ──────── 保存系メソッド ────────
+
+    def save_actions(self) -> None:
+        """現在のアクション一覧を actions.yaml に書き出す"""
+        data = {"actions": [a.to_dict() for a in self._actions]}
+        self._write_yaml(self.actions_file, data)
+        logger.info(f"アクション設定を保存しました ({len(self._actions)} 件)")
+
+    def save_groups(self) -> None:
+        """現在のグループ一覧を groups.yaml に書き出す"""
+        data = {"groups": [g.to_dict() for g in self._groups]}
+        self._write_yaml(self.groups_file, data)
+        logger.info(f"グループ設定を保存しました ({len(self._groups)} 件)")
+
+    def _write_yaml(self, path: Path, data: dict) -> None:
+        """YAML を書き出す (UTF-8, 可読フォーマット)"""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            yaml.dump(
+                data, f,
+                allow_unicode=True,
+                default_flow_style=False,
+                sort_keys=False,
+            )
+
+    # ──────── アクション CRUD ────────
+
+    def add_action(self, data: Dict[str, Any]) -> ActionConfig:
+        """アクションを追加"""
+        if not self._loaded:
+            self.load()
+        # ID 重複チェック
+        new_id = data.get("id", "")
+        if any(a.id == new_id for a in self._actions):
+            raise ValueError(f"ID が重複しています: {new_id}")
+        action = ActionConfig(data)
+        self._actions.append(action)
+        self._actions.sort(key=lambda a: a.display_order)
+        return action
+
+    def update_action(self, action_id: str, data: Dict[str, Any]) -> ActionConfig:
+        """既存アクションを更新"""
+        if not self._loaded:
+            self.load()
+        for i, a in enumerate(self._actions):
+            if a.id == action_id:
+                # ID 変更時の重複チェック
+                new_id = data.get("id", action_id)
+                if new_id != action_id and any(x.id == new_id for x in self._actions):
+                    raise ValueError(f"ID が重複しています: {new_id}")
+                self._actions[i] = ActionConfig(data)
+                self._actions.sort(key=lambda a: a.display_order)
+                return self._actions[i]
+        raise KeyError(f"アクションが見つかりません: {action_id}")
+
+    def delete_action(self, action_id: str) -> None:
+        """アクションを削除"""
+        if not self._loaded:
+            self.load()
+        before = len(self._actions)
+        self._actions = [a for a in self._actions if a.id != action_id]
+        if len(self._actions) == before:
+            raise KeyError(f"アクションが見つかりません: {action_id}")
+
+    def reorder_actions(self, id_list: List[str]) -> None:
+        """IDリスト順に display_order を振り直す"""
+        if not self._loaded:
+            self.load()
+        order_map = {aid: idx + 1 for idx, aid in enumerate(id_list)}
+        for a in self._actions:
+            if a.id in order_map:
+                a.display_order = order_map[a.id]
+        self._actions.sort(key=lambda a: a.display_order)
+
+    # ──────── グループ CRUD ────────
+
+    def add_group(self, data: Dict[str, Any]) -> GroupConfig:
+        """グループを追加"""
+        if not self._loaded:
+            self.load()
+        new_name = data.get("name", "")
+        if any(g.name == new_name for g in self._groups):
+            raise ValueError(f"グループ名が重複しています: {new_name}")
+        group = GroupConfig(data)
+        self._groups.append(group)
+        self._groups.sort(key=lambda g: g.display_order)
+        return group
+
+    def update_group(self, group_name: str, data: Dict[str, Any]) -> GroupConfig:
+        """既存グループを更新"""
+        if not self._loaded:
+            self.load()
+        for i, g in enumerate(self._groups):
+            if g.name == group_name:
+                new_name = data.get("name", group_name)
+                if new_name != group_name and any(x.name == new_name for x in self._groups):
+                    raise ValueError(f"グループ名が重複しています: {new_name}")
+                # グループ名変更時、所属アクションも更新
+                if new_name != group_name:
+                    for a in self._actions:
+                        if a.group == group_name:
+                            a.group = new_name
+                self._groups[i] = GroupConfig(data)
+                self._groups.sort(key=lambda g: g.display_order)
+                return self._groups[i]
+        raise KeyError(f"グループが見つかりません: {group_name}")
+
+    def delete_group(self, group_name: str) -> None:
+        """グループを削除（所属アクションは未分類になる）"""
+        if not self._loaded:
+            self.load()
+        before = len(self._groups)
+        self._groups = [g for g in self._groups if g.name != group_name]
+        if len(self._groups) == before:
+            raise KeyError(f"グループが見つかりません: {group_name}")
+        # 所属アクションのグループを空にする
+        for a in self._actions:
+            if a.group == group_name:
+                a.group = ""
+
+    # ──────── バックアップ / 復元 ────────
+
+    def backup_config(self) -> str:
+        """設定ファイルのバックアップを作成。ファイル名を返す"""
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_dir = self.config_dir / "backups"
+        backup_dir.mkdir(exist_ok=True)
+
+        for src in [self.actions_file, self.groups_file]:
+            if src.exists():
+                dst = backup_dir / f"{src.stem}_{ts}{src.suffix}"
+                shutil.copy2(src, dst)
+
+        logger.info(f"バックアップ作成: {ts}")
+        return ts
+
+    def list_backups(self) -> List[Dict[str, str]]:
+        """利用可能なバックアップ一覧を返す"""
+        backup_dir = self.config_dir / "backups"
+        if not backup_dir.exists():
+            return []
+        # タイムスタンプを抽出してグループ化
+        timestamps = set()
+        for f in backup_dir.glob("*.yaml"):
+            parts = f.stem.rsplit("_", 2)
+            if len(parts) >= 3:
+                ts = f"{parts[-2]}_{parts[-1]}"
+                timestamps.add(ts)
+        result = []
+        for ts in sorted(timestamps, reverse=True):
+            result.append({"timestamp": ts, "label": ts.replace("_", " ")})
+        return result
+
+    def restore_config(self, timestamp: str) -> None:
+        """バックアップから復元"""
+        backup_dir = self.config_dir / "backups"
+        restored = False
+        for src_name in ["actions", "groups"]:
+            bak = backup_dir / f"{src_name}_{timestamp}.yaml"
+            if bak.exists():
+                dst = self.config_dir / f"{src_name}.yaml"
+                shutil.copy2(bak, dst)
+                restored = True
+        if not restored:
+            raise FileNotFoundError(f"バックアップが見つかりません: {timestamp}")
+        self.reload()
+        logger.info(f"バックアップから復元しました: {timestamp}")

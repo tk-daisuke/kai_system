@@ -15,6 +15,7 @@ from core.config_manager import ConfigManager
 from core.action_manager import ActionManager, registry
 from core.group_manager import GroupManager
 from core.template_engine import get_template_variables, TZ_JST
+from core.param_schema import PARAM_SCHEMAS, get_action_types, get_param_schema
 from infra.logger import logger
 
 
@@ -43,6 +44,10 @@ class WebServer:
         @app.route("/")
         def index():
             return render_template("index.html")
+
+        @app.route("/editor")
+        def editor():
+            return render_template("editor.html")
 
         @app.route("/api/status")
         def api_status():
@@ -159,6 +164,119 @@ class WebServer:
             tz = data.get("tz_mode", "jst")
             vars = get_template_variables(dt_from=dt_from, dt_to=dt_to, tz_mode=tz)
             return jsonify({"vars": vars})
+
+        # ──────── 設定エディタAPI ────────
+
+        @app.route("/api/config/actions", methods=["GET"])
+        def api_config_get_actions():
+            actions = [a.to_dict() for a in self.config._actions]
+            return jsonify({"actions": actions})
+
+        @app.route("/api/config/actions", methods=["POST"])
+        def api_config_add_action():
+            data = request.get_json(silent=True) or {}
+            try:
+                self.config.backup_config()
+                action = self.config.add_action(data)
+                self.config.save_actions()
+                return jsonify({"status": "ok", "action": action.to_dict()})
+            except (ValueError, KeyError) as e:
+                return jsonify({"status": "error", "message": str(e)}), 400
+
+        @app.route("/api/config/actions/<action_id>", methods=["PUT"])
+        def api_config_update_action(action_id):
+            data = request.get_json(silent=True) or {}
+            try:
+                self.config.backup_config()
+                action = self.config.update_action(action_id, data)
+                self.config.save_actions()
+                return jsonify({"status": "ok", "action": action.to_dict()})
+            except (ValueError, KeyError) as e:
+                return jsonify({"status": "error", "message": str(e)}), 400
+
+        @app.route("/api/config/actions/<action_id>", methods=["DELETE"])
+        def api_config_delete_action(action_id):
+            try:
+                self.config.backup_config()
+                self.config.delete_action(action_id)
+                self.config.save_actions()
+                return jsonify({"status": "ok"})
+            except KeyError as e:
+                return jsonify({"status": "error", "message": str(e)}), 404
+
+        @app.route("/api/config/actions/reorder", methods=["POST"])
+        def api_config_reorder_actions():
+            data = request.get_json(silent=True) or {}
+            id_list = data.get("ids", [])
+            self.config.backup_config()
+            self.config.reorder_actions(id_list)
+            self.config.save_actions()
+            return jsonify({"status": "ok"})
+
+        @app.route("/api/config/groups", methods=["GET"])
+        def api_config_get_groups():
+            groups = [g.to_dict() for g in self.config._groups]
+            return jsonify({"groups": groups})
+
+        @app.route("/api/config/groups", methods=["POST"])
+        def api_config_add_group():
+            data = request.get_json(silent=True) or {}
+            try:
+                self.config.backup_config()
+                group = self.config.add_group(data)
+                self.config.save_groups()
+                return jsonify({"status": "ok", "group": group.to_dict()})
+            except (ValueError, KeyError) as e:
+                return jsonify({"status": "error", "message": str(e)}), 400
+
+        @app.route("/api/config/groups/<group_name>", methods=["PUT"])
+        def api_config_update_group(group_name):
+            data = request.get_json(silent=True) or {}
+            try:
+                self.config.backup_config()
+                group = self.config.update_group(group_name, data)
+                self.config.save_groups()
+                self.config.save_actions()  # グループ名変更時にアクションも更新
+                return jsonify({"status": "ok", "group": group.to_dict()})
+            except (ValueError, KeyError) as e:
+                return jsonify({"status": "error", "message": str(e)}), 400
+
+        @app.route("/api/config/groups/<group_name>", methods=["DELETE"])
+        def api_config_delete_group(group_name):
+            try:
+                self.config.backup_config()
+                self.config.delete_group(group_name)
+                self.config.save_groups()
+                self.config.save_actions()  # 所属アクションのgroupフィールド更新
+                return jsonify({"status": "ok"})
+            except KeyError as e:
+                return jsonify({"status": "error", "message": str(e)}), 404
+
+        @app.route("/api/config/action-types", methods=["GET"])
+        def api_config_action_types():
+            return jsonify({
+                "types": get_action_types(),
+                "schemas": PARAM_SCHEMAS,
+            })
+
+        @app.route("/api/config/backup", methods=["POST"])
+        def api_config_backup():
+            ts = self.config.backup_config()
+            return jsonify({"status": "ok", "timestamp": ts})
+
+        @app.route("/api/config/backups", methods=["GET"])
+        def api_config_list_backups():
+            return jsonify({"backups": self.config.list_backups()})
+
+        @app.route("/api/config/restore", methods=["POST"])
+        def api_config_restore():
+            data = request.get_json(silent=True) or {}
+            ts = data.get("timestamp", "")
+            try:
+                self.config.restore_config(ts)
+                return jsonify({"status": "ok"})
+            except FileNotFoundError as e:
+                return jsonify({"status": "error", "message": str(e)}), 404
 
         return app
 
