@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>kai_system</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+    <div class="app">
+        <header class="header">
+            <div class="header-left">
+                <h1 class="logo">⚡ kai_system</h1>
+                <span class="status-badge" id="statusBadge">待機中</span>
+            </div>
+            <div class="header-right">
+                <button class="btn btn-ghost" onclick="reloadConfig()" title="設定を再読み込み">🔄</button>
+            </div>
+        </header>
+
+        <!-- 期間指定バー（入力は常にJST） -->
+        <section class="period-bar" id="periodBar">
+            <div class="period-row">
+                <div class="period-field">
+                    <label>FROM <span class="tz-hint">JST</span></label>
+                    <input type="datetime-local" id="dtFrom" class="date-input">
+                </div>
+                <span class="period-arrow">→</span>
+                <div class="period-field">
+                    <label>TO <span class="tz-hint">JST</span></label>
+                    <input type="datetime-local" id="dtTo" class="date-input">
+                </div>
+            </div>
+            <div class="period-actions">
+                <div class="quick-btns">
+                    <button class="date-quick-btn active" onclick="setPreset('yesterday', this)">昨日分</button>
+                    <button class="date-quick-btn" onclick="setPreset('2days', this)">2日前</button>
+                    <button class="date-quick-btn" onclick="setPreset('last_week', this)">先週</button>
+                    <span class="quick-sep">|</span>
+                    <button class="date-quick-btn" onclick="setPreset('day_shift', this)" title="07:00〜19:00">☀
+                        日勤</button>
+                    <button class="date-quick-btn" onclick="setPreset('night_shift', this)" title="19:00〜翌07:00">🌙
+                        夜勤</button>
+                    <span class="quick-sep">|</span>
+                    <button class="date-quick-btn" onclick="setPreset('thismonth', this)">今月</button>
+                    <span class="quick-sep">|</span>
+                    <div class="week-input-group">
+                        <label class="week-label">🗓 W</label>
+                        <input type="number" id="weekNumInput" class="week-num-input" min="1" max="53" placeholder="--"
+                            title="週番号を入力してEnter">
+                        <input type="number" id="weekYearInput" class="week-year-input" min="2020" max="2099" title="年">
+                        <button class="date-quick-btn" onclick="applyWeekInput()">→</button>
+                    </div>
+                </div>
+                <div class="tz-controls">
+                    <span class="tz-label">{from} =</span>
+                    <div class="tz-toggle" onclick="toggleTzMode()" title="汎用変数 {from}/{to} の解決先を切替">
+                        <span class="tz-option active" id="tzJst">JST</span>
+                        <span class="tz-option" id="tzUtc">UTC</span>
+                        <div class="tz-slider" id="tzSlider"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="tz-converted-bar" id="tzConvertedBar"></div>
+        </section>
+
+        <main class="main">
+            <section class="panel" id="actionPanel">
+                <div id="groupContainer"></div>
+            </section>
+
+            <section class="panel progress-panel" id="progressPanel" style="display:none;">
+                <div class="progress-header">
+                    <span class="progress-title" id="progressTitle">実行中...</span>
+                    <button class="btn btn-danger btn-sm" onclick="stopExecution()">⏹ 中断</button>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+                </div>
+                <p class="progress-detail" id="progressDetail"></p>
+            </section>
+
+            <section class="panel history-panel">
+                <div class="panel-header">
+                    <h2>📋 履歴</h2>
+                    <div class="filter-group">
+                        <button class="filter-btn active" onclick="setFilter('all', this)">全て</button>
+                        <button class="filter-btn" onclick="setFilter('success', this)">成功</button>
+                        <button class="filter-btn" onclick="setFilter('error', this)">失敗</button>
+                    </div>
+                </div>
+                <div class="history-list" id="historyList">
+                    <p class="empty-state">まだ履歴はありません</p>
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <details class="template-info">
+                <summary>📅 テンプレート変数（展開後の値）</summary>
+                <div class="template-vars" id="templateVars"></div>
+            </details>
+        </footer>
+    </div>
+
+    <!-- 実行確認モーダル -->
+    <div class="modal-overlay" id="confirmModal" style="display:none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modalTitle">実行確認</h3>
+                <button class="btn btn-ghost" onclick="closeModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-period">
+                    <div class="modal-period-row">
+                        <span class="modal-label">From:</span>
+                        <span id="modalFrom" class="modal-value"></span>
+                    </div>
+                    <div class="modal-period-row">
+                        <span class="modal-label">To:</span>
+                        <span id="modalTo" class="modal-value"></span>
+                    </div>
+                    <div class="modal-period-row" id="modalTzRow">
+                        <span class="modal-label">TZ:</span>
+                        <span id="modalTz" class="modal-value"></span>
+                    </div>
+                </div>
+                <div class="modal-vars-grid" id="modalVarsGrid"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" onclick="closeModal()">キャンセル</button>
+                <button class="btn btn-primary" onclick="confirmExecution()">▶ 実行</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentFilter = 'all';
+        let lastHistoryCount = 0;
+        let pendingExecution = null;
+        let tzMode = 'jst'; // UIトグル: {from}/{to} をどのTZで解決するか
+
+        document.addEventListener('DOMContentLoaded', () => {
+            setPreset('yesterday', document.querySelector('.date-quick-btn'));
+            document.getElementById('weekYearInput').value = new Date().getFullYear();
+            document.getElementById('weekNumInput').addEventListener('keydown', e => {
+                if (e.key === 'Enter') applyWeekInput();
+            });
+            fetchStatus();
+            setInterval(fetchStatus, 1500);
+            document.getElementById('dtFrom').addEventListener('change', onPeriodChange);
+            document.getElementById('dtTo').addEventListener('change', onPeriodChange);
+        });
+
+        // ---- 日付ヘルパー ----
+        function toLocalISO(d) {
+            const p = n => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+        }
+        function getDtFrom() { return document.getElementById('dtFrom').value; }
+        function getDtTo() { return document.getElementById('dtTo').value; }
+
+        // ---- 週番号手動入力 ----
+        function applyWeekInput() {
+            const wn = parseInt(document.getElementById('weekNumInput').value);
+            const yr = parseInt(document.getElementById('weekYearInput').value);
+            if (!wn || wn < 1 || wn > 54) return;
+            // WEEKNUM互换（日曜始まり）: 1/1が属する週を第1週とする
+            const jan1 = new Date(yr, 0, 1);
+            const jan1dow = jan1.getDay(); // 0=Sun, 6=Sat
+            // 第1週の日曜日 (jan1 から指定週 -1 週前の日曜)
+            const sunday = new Date(jan1.getTime() - jan1dow * 86400000 + (wn - 1) * 7 * 86400000);
+            const nextSunday = new Date(sunday.getTime() + 7 * 86400000);
+            document.getElementById('dtFrom').value = toLocalISO(sunday);
+            document.getElementById('dtTo').value = toLocalISO(nextSunday);
+            document.querySelectorAll('.date-quick-btn').forEach(b => b.classList.remove('active'));
+            onPeriodChange();
+        }
+
+        // ---- プリセット ----
+        function setPreset(type, btn) {
+            const now = new Date();
+            const today0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            let from, to;
+
+            switch (type) {
+                case 'yesterday':
+                    from = new Date(today0.getTime() - 86400000);
+                    to = new Date(today0.getTime());
+                    break;
+                case '2days':
+                    from = new Date(today0.getTime() - 86400000 * 2);
+                    to = new Date(today0.getTime() - 86400000);
+                    break;
+                case 'last_week': {
+                    // 日曜始まり（Excel WEEKNUM互换）
+                    const dow = today0.getDay(); // 0=Sun
+                    const sunThisWeek = new Date(today0.getTime() - dow * 86400000);
+                    from = new Date(sunThisWeek.getTime() - 7 * 86400000); // 先週日曜
+                    to = sunThisWeek; // 今週日曜 00:00
+                    break;
+                }
+                case 'day_shift':
+                    from = new Date(today0.getTime() + 7 * 3600000);
+                    to = new Date(today0.getTime() + 19 * 3600000);
+                    break;
+                case 'night_shift':
+                    from = new Date(today0.getTime() - 86400000 + 19 * 3600000);
+                    to = new Date(today0.getTime() + 7 * 3600000);
+                    break;
+                case 'thismonth':
+                    from = new Date(now.getFullYear(), now.getMonth(), 1);
+                    to = new Date(today0.getTime());
+                    break;
+            }
+
+            document.getElementById('dtFrom').value = toLocalISO(from);
+            document.getElementById('dtTo').value = toLocalISO(to);
+
+            document.querySelectorAll('.date-quick-btn').forEach(b => b.classList.remove('active'));
+            if (btn) btn.classList.add('active');
+            onPeriodChange();
+        }
+
+        function onPeriodChange() {
+            updateTzConvertedBar();
+            updateTemplateVarsPreview();
+        }
+
+        // ---- TZ トグル（{from}/{to} の解決先を切替） ----
+        function toggleTzMode() {
+            tzMode = tzMode === 'jst' ? 'utc' : 'jst';
+            const slider = document.getElementById('tzSlider');
+            const jst = document.getElementById('tzJst');
+            const utc = document.getElementById('tzUtc');
+            if (tzMode === 'utc') {
+                slider.style.transform = 'translateX(100%)';
+                jst.classList.remove('active');
+                utc.classList.add('active');
+            } else {
+                slider.style.transform = 'translateX(0)';
+                jst.classList.add('active');
+                utc.classList.remove('active');
+            }
+            updateTzConvertedBar();
+            updateTemplateVarsPreview();
+        }
+
+        function updateTzConvertedBar() {
+            const from = getDtFrom();
+            const to = getDtTo();
+            if (!from || !to) return;
+            const el = document.getElementById('tzConvertedBar');
+
+            // datetime-local の値は常にJST入力。ブラウザのTZに依存しないよう
+            // 明示的に +09:00 を付与してパースする
+            const fDate = new Date(from + ':00+09:00');
+            const tDate = new Date(to + ':00+09:00');
+            const fmt = d => `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+
+            el.innerHTML =
+                `<span class="tz-conv-item"><span class="tz-conv-label">UTC:</span> ${fmt(fDate)} → ${fmt(tDate)}</span>` +
+                `<span class="tz-conv-sep">|</span>` +
+                `<span class="tz-conv-item"><span class="tz-conv-label">W:</span> ${getISOWeek(fDate)}</span>`;
+        }
+
+        function getISOWeek(d) {
+            const tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+            tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
+            const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+            return Math.ceil((((tmp - yearStart) / 86400000) + 1) / 7);
+        }
+
+        async function updateTemplateVarsPreview() {
+            try {
+                const res = await fetch('/api/preview_vars', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ dt_from: getDtFrom(), dt_to: getDtTo(), tz_mode: tzMode }),
+                });
+                const data = await res.json();
+                renderTemplateVars(data.vars);
+            } catch (e) { }
+        }
+
+        // ---- データ取得 ----
+        async function fetchStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                renderGroups(data.groups);
+                updateProgress(data.running, data.progress);
+                updateHistory(data.history);
+                if (document.getElementById('templateVars').children.length === 0) {
+                    renderTemplateVars(data.template_vars);
+                }
+            } catch (e) { }
+        }
+
+        function renderGroups(groups) {
+            const c = document.getElementById('groupContainer');
+            if (c.children.length > 0) return;
+            c.innerHTML = groups.map(g => `
+                <div class="group-card">
+                    <div class="group-header" style="border-left: 4px solid ${g.color}">
+                        <div class="group-title">
+                            <span class="group-icon">${g.icon}</span>
+                            <span>${g.name}</span>
+                            <span class="action-count">${g.actions.length}件</span>
+                        </div>
+                        <button class="btn btn-primary btn-sm" onclick="showConfirm('group','${g.name}','${g.name}','jst')">▶ すべて実行</button>
+                    </div>
+                    <div class="action-list">
+                        ${g.actions.map(a => `
+                            <button class="action-btn ${a.enabled ? '' : 'disabled'}"
+                                    onclick="${a.enabled ? `showConfirm('action','${a.id}','${a.name}','${a.timezone}')` : ''}"
+                                    ${a.enabled ? '' : 'disabled'} title="${a.type}">
+                                <span class="action-icon">${a.icon}</span>
+                                <span class="action-name">${a.name}</span>
+                                ${a.timezone === 'utc' ? '<span class="tz-badge utc">UTC</span>' : ''}
+                                <span class="action-type">${a.type}</span>
+                            </button>
+                        `).join('')}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ---- モーダル ----
+        async function showConfirm(type, id, name, actionTz) {
+            pendingExecution = { type, id, actionTz };
+            document.getElementById('modalTitle').textContent =
+                (type === 'group' ? 'グループ実行: ' : 'アクション実行: ') + name;
+
+            document.getElementById('modalFrom').textContent = getDtFrom().replace('T', ' ') + ' JST';
+            document.getElementById('modalTo').textContent = getDtTo().replace('T', ' ') + ' JST';
+
+            const tzLabel = actionTz === 'utc'
+                ? '🌍 UTC（{from}/{to} = UTC基準で展開）'
+                : '🗾 JST（{from}/{to} = JST基準で展開）';
+            document.getElementById('modalTz').textContent = tzLabel;
+            document.getElementById('modalTz').className = 'modal-value' + (actionTz === 'utc' ? ' utc-accent' : '');
+
+            try {
+                const tz = actionTz || tzMode;
+                const res = await fetch('/api/preview_vars', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ dt_from: getDtFrom(), dt_to: getDtTo(), tz_mode: tz }),
+                });
+                const data = await res.json();
+                const v = data.vars;
+                const keys = [
+                    ['from', 'to'],
+                    ['from_date', 'to_date'],
+                    ['from_date_jp', 'to_date_jp'],
+                    ['week', 'from_week'],
+                    ['today', 'yesterday'],
+                ];
+                document.getElementById('modalVarsGrid').innerHTML = keys.map(([k1, k2]) =>
+                    `<div class="var-row"><code>{${k1}}</code><span>${v[k1]}</span></div>` +
+                    `<div class="var-row"><code>{${k2}}</code><span>${v[k2]}</span></div>`
+                ).join('');
+            } catch (e) { }
+
+            document.getElementById('confirmModal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('confirmModal').style.display = 'none';
+            pendingExecution = null;
+        }
+
+        async function confirmExecution() {
+            if (!pendingExecution) return;
+            const { type, id } = pendingExecution;
+            closeModal();
+
+            const body = { dt_from: getDtFrom(), dt_to: getDtTo() };
+            const url = type === 'group'
+                ? `/api/run/group/${encodeURIComponent(id)}`
+                : `/api/run/action/${id}`;
+
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const data = await res.json();
+                if (data.error) alert(data.error);
+            } catch (e) { alert('通信エラー: ' + e.message); }
+        }
+
+        // ---- プログレス・履歴 ----
+        function updateProgress(running, progress) {
+            const panel = document.getElementById('progressPanel');
+            const badge = document.getElementById('statusBadge');
+            if (running) {
+                panel.style.display = 'block';
+                document.getElementById('progressTitle').textContent = running;
+                document.getElementById('progressDetail').textContent = progress.message;
+                badge.textContent = '実行中';
+                badge.className = 'status-badge running';
+                if (progress.total > 0) {
+                    document.getElementById('progressBar').style.width =
+                        Math.round((progress.current / progress.total) * 100) + '%';
+                }
+            } else {
+                panel.style.display = 'none';
+                badge.textContent = '待機中';
+                badge.className = 'status-badge';
+            }
+        }
+
+        function updateHistory(history) {
+            if (history.length === lastHistoryCount) return;
+            lastHistoryCount = history.length;
+            const list = document.getElementById('historyList');
+            const filtered = currentFilter === 'all' ? history : history.filter(h => h.level === currentFilter);
+            if (filtered.length === 0) {
+                list.innerHTML = '<p class="empty-state">まだ履歴はありません</p>';
+                return;
+            }
+            list.innerHTML = filtered.reverse().map(h => `
+                <div class="history-item ${h.level}">
+                    <span class="history-time">${h.time}</span>
+                    <span class="history-msg">${h.message}</span>
+                </div>
+            `).join('');
+        }
+
+        function renderTemplateVars(vars) {
+            document.getElementById('templateVars').innerHTML = Object.entries(vars).map(([k, v]) =>
+                `<span class="var-tag"><code>{${k}}</code> = ${v}</span>`
+            ).join('');
+        }
+
+        async function stopExecution() { await fetch('/api/stop', { method: 'POST' }); }
+
+        async function reloadConfig() {
+            await fetch('/api/reload', { method: 'POST' });
+            document.getElementById('groupContainer').innerHTML = '';
+            lastHistoryCount = 0;
+            fetchStatus();
+        }
+
+        function setFilter(filter, btn) {
+            currentFilter = filter;
+            lastHistoryCount = 0;
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            fetchStatus();
+        }
+    </script>
+</body>
+
+</html>
