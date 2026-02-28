@@ -30,6 +30,7 @@ def main():
     import actions.csv_download   # noqa: F401
     import actions.scraper        # noqa: F401
     import actions.shell_cmd      # noqa: F401
+    import actions.file_ops       # noqa: F401
 
     logger.info("kai_system を起動します")
 

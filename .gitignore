@@ -1,4 +1,4 @@
-# Co-worker Bot .gitignore
+# kai_system .gitignore
 
 # 設計ドキュメント（機密）
 main.md
@@ -39,10 +39,8 @@ test_csv/
 # exe
 *.exe
 
-# Production config (Local)
-# Production config (Local)
-settings/production/
-settings/test/*.csv
+# Config backups
+config/backups/
 
 # Caches
 .pytest_cache/
@@ -61,3 +59,4 @@ error_log.txt
 error_log_utf8.txt
 test_result.txt
 *.bak
+CLAUDE.md

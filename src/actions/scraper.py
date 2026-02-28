@@ -1,15 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 kai_system - Webスクレーピング アクション
-4段階のモードでWebからデータを取得する
+3つのモードでWebからデータを取得する
 
 Mode: auto_table   - URL + テーブル自動検出 (pandas.read_html) - 認証不要のページ向け
 Mode: css_selector - URL + CSSセレクタ指定 (BeautifulSoup) - 認証不要のページ向け
-Mode: browser_session - 既存ブラウザセッション引き継ぎ (Playwright) - 認証が必要なページ向け
 Mode: browser_csv  - ブラウザ操作でCSVダウンロード (Playwright) - 認証+フォーム操作が必要
-
-browser_session / browser_csv は、ユーザーが手動でログイン済みのブラウザに
-Playwright で接続し、そのセッション（Cookie等）を引き継いでスクレーピングを行う。
 """
 
 from pathlib import Path
@@ -30,21 +26,38 @@ class ScrapingAction(ActionBase):
 
     def validate_params(self, params: Dict[str, Any]) -> list:
         issues = []
+        mode = params.get("mode", "browser_csv")
+
         if not params.get("url"):
             issues.append("URL (url) が指定されていません")
 
-        if not params.get("download_button"):
-            issues.append("ダウンロードボタンのセレクタ (download_button) が必要です")
+        if mode == "browser_csv":
+            if not params.get("download_button"):
+                issues.append("ダウンロードボタンのセレクタ (download_button) が必要です")
+        elif mode == "auto_table":
+            if not params.get("output"):
+                issues.append("出力先 (output) が指定されていません")
+        elif mode == "css_selector":
+            if not params.get("selectors"):
+                issues.append("CSSセレクタ定義 (selectors) が必要です")
+            if not params.get("output"):
+                issues.append("出力先 (output) が指定されていません")
 
         return issues
 
     def execute(self, params: Dict[str, Any]) -> ActionResult:
-        """スクレーピング（CSVダウンロード）を実行"""
+        """モードに応じてスクレーピングを実行"""
         url = params.get("url", "")
-        self._notify_progress(f"スクレーピング開始: {url}", 0)
+        mode = params.get("mode", "browser_csv")
+        self._notify_progress(f"スクレーピング開始 [{mode}]: {url}", 0)
 
         try:
-            return self._scrape_browser_csv(url, params)
+            if mode == "auto_table":
+                return self._scrape_auto_table(url, params)
+            elif mode == "css_selector":
+                return self._scrape_css_selector(url, params)
+            else:
+                return self._scrape_browser_csv(url, params)
         except ImportError as e:
             missing = str(e).split("'")[-2] if "'" in str(e) else str(e)
             return ActionResult(
@@ -60,23 +73,115 @@ class ScrapingAction(ActionBase):
                 error=str(e),
             )
 
-    # モード廃止。ブラウザCSVダウンロードに統合
+    # ----------------------------------------------------------------
+    # Mode: auto_table (テーブル自動検出)
+    # ----------------------------------------------------------------
+    def _scrape_auto_table(
+        self, url: str, params: Dict[str, Any]
+    ) -> ActionResult:
+        """pandas.read_html でHTMLテーブルを自動検出して取得"""
+        import pandas as pd
+        import requests
+
+        table_index = params.get("table_index", 0)
+        output = params.get("output", "")
+        output_sheet = params.get("output_sheet", "Sheet1")
+
+        self._notify_progress("HTMLを取得中...", 20)
+        resp = requests.get(url, timeout=30)
+        resp.raise_for_status()
+
+        self._notify_progress("テーブルを解析中...", 50)
+        tables = pd.read_html(resp.text)
+
+        if not tables:
+            return ActionResult(
+                success=False,
+                message="テーブルが見つかりませんでした",
+                error=f"URL: {url} にHTMLテーブルが存在しません",
+            )
+
+        if table_index >= len(tables):
+            return ActionResult(
+                success=False,
+                message=f"テーブルインデックス {table_index} が範囲外です（{len(tables)}個検出）",
+                error=f"table_index は 0〜{len(tables) - 1} の範囲で指定してください",
+            )
+
+        df = tables[table_index]
+
+        self._notify_progress("出力中...", 80)
+        self._write_output(df, output, output_sheet)
+
+        self._notify_progress("完了", 100)
+        return ActionResult(
+            success=True,
+            message=f"テーブル取得完了: {len(df)}行 -> {output}",
+            data={"output": output, "rows": len(df), "columns": len(df.columns)},
+        )
 
     # ----------------------------------------------------------------
-    # Mode: browser_csv (Level 4 - 認証必要・CSVダウンロード操作)
+    # Mode: css_selector (CSSセレクタ指定)
+    # ----------------------------------------------------------------
+    def _scrape_css_selector(
+        self, url: str, params: Dict[str, Any]
+    ) -> ActionResult:
+        """BeautifulSoup でCSSセレクタ指定の要素を抽出"""
+        import pandas as pd
+        import requests
+        from bs4 import BeautifulSoup
+
+        selectors = params.get("selectors", {})
+        output = params.get("output", "")
+        output_sheet = params.get("output_sheet", "Sheet1")
+
+        self._notify_progress("HTMLを取得中...", 20)
+        resp = requests.get(url, timeout=30)
+        resp.raise_for_status()
+
+        self._notify_progress("要素を抽出中...", 50)
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        data: Dict[str, List[str]] = {}
+        max_len = 0
+        for col_name, selector in selectors.items():
+            elements = soup.select(selector)
+            texts = [el.get_text(strip=True) for el in elements]
+            data[col_name] = texts
+            max_len = max(max_len, len(texts))
+
+        if max_len == 0:
+            return ActionResult(
+                success=False,
+                message="指定されたセレクタに一致する要素が見つかりませんでした",
+                error=f"selectors: {selectors}",
+            )
+
+        # 長さを揃える
+        for col_name in data:
+            while len(data[col_name]) < max_len:
+                data[col_name].append("")
+
+        df = pd.DataFrame(data)
+
+        self._notify_progress("出力中...", 80)
+        self._write_output(df, output, output_sheet)
+
+        self._notify_progress("完了", 100)
+        return ActionResult(
+            success=True,
+            message=f"CSS抽出完了: {len(df)}行 -> {output}",
+            data={"output": output, "rows": len(df), "columns": len(df.columns)},
+        )
+
+    # ----------------------------------------------------------------
+    # Mode: browser_csv (認証必要・CSVダウンロード操作)
     # ----------------------------------------------------------------
     def _scrape_browser_csv(
         self, url: str, params: Dict[str, Any]
     ) -> ActionResult:
         """
-        既存ブラウザセッションでフォーム操作 → CSVダウンロード
-
-        ユーザーの実際のワークフロー:
-        1. ログイン済みのブラウザに接続
-        2. 対象ページを開く
-        3. 日時選択欄を埋める
-        4. CSVダウンロードボタンを押す
-        5. ダウンロードされたCSVを取得
+        既存ブラウザセッションでフォーム操作 -> CSVダウンロード
 
         前提: Chrome を --remote-debugging-port=9222 で起動済み
         """
@@ -115,14 +220,13 @@ class ScrapingAction(ActionBase):
                 if action == "fill":
                     page.fill(selector, value)
                 elif action == "clear_and_fill":
-                    page.click(selector, click_count=3)  # テキスト全選択
+                    page.click(selector, click_count=3)
                     page.fill(selector, value)
                 elif action == "select":
                     page.select_option(selector, value)
                 elif action == "click":
                     page.click(selector)
                 elif action == "type":
-                    # 1文字ずつタイプ（日付ピッカー対応）
                     page.click(selector)
                     page.keyboard.type(value)
 
@@ -135,27 +239,22 @@ class ScrapingAction(ActionBase):
             # CSVダウンロードボタンをクリック
             self._notify_progress("CSVダウンロードボタンをクリック...", 60)
 
-            # Playwright のダウンロードイベントを監視
             try:
                 with page.expect_download(timeout=download_timeout * 1000) as download_info:
                     page.click(download_button)
 
                 download = download_info.value
-                # ダウンロード完了を待つ
                 downloaded_path = download.path()
 
-                # 指定された出力先に保存または移動
                 final_path = ""
                 if output:
                     if str(output).lower().endswith(('.xlsx', '.xls')):
-                        # Excel転記機能（プラグイン機能の統合）
                         final_path = self._transfer_to_excel(downloaded_path, output, params)
                     else:
                         import shutil
                         shutil.copy(str(downloaded_path), output)
                         final_path = output
                 else:
-                    # デフォルトのダウンロード先
                     suggested = download.suggested_filename
                     final_path = str(Path(download_dir) / suggested)
                     download.save_as(final_path)
@@ -172,7 +271,6 @@ class ScrapingAction(ActionBase):
             except Exception as dl_err:
                 logger.warning(f"Playwright download event失敗、フォールバック: {dl_err}")
 
-                # フォールバック: ダウンロードフォルダを監視
                 page.click(download_button)
 
                 self._notify_progress("ダウンロード待機中...", 70)
@@ -217,7 +315,6 @@ class ScrapingAction(ActionBase):
         if platform.system() != "Windows":
             logger.warning("Windows COM転記はWindows上でのみ動作します。CSVをそのまま保存します。")
             import shutil
-            # Excelではないが、とりあえず output にコピー
             shutil.copy(str(csv_path), excel_path)
             return excel_path
 
@@ -227,22 +324,20 @@ class ScrapingAction(ActionBase):
             excel = win32com.client.Dispatch("Excel.Application")
             excel.Visible = True
             wb = excel.Workbooks.Open(str(Path(excel_path).absolute()))
-            
-            # CSVを開いてコピー
+
             csv_wb = excel.Workbooks.Open(str(csv_path.absolute()), Format=2, Local=True)
             csv_wb.Sheets(1).UsedRange.Copy()
-            
-            # 転記
+
             try:
                 target_ws = wb.Sheets(sheet_name)
-            except:
+            except Exception:
                 target_ws = wb.Sheets.Add()
                 target_ws.Name = sheet_name
-            
-            target_ws.Range("A1").PasteSpecial(Paste=-4163) # xlPasteValues
+
+            target_ws.Range("A1").PasteSpecial(Paste=-4163)
             excel.CutCopyMode = False
             csv_wb.Close(False)
-            
+
             wb.Save()
             return excel_path
         except Exception as e:
@@ -255,6 +350,7 @@ class ScrapingAction(ActionBase):
     def _write_output(self, df, output: str, sheet_name: str) -> None:
         """DataFrameを出力ファイルに書き込む"""
         output_path = Path(output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         if output_path.suffix.lower() in (".xlsx", ".xls"):
             df.to_excel(output, sheet_name=sheet_name, index=False)
         else:

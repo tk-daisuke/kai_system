@@ -1,0 +1,11 @@
+name: CSS セレクタ抽出
+description: CSSセレクタを指定してページ要素を抽出する
+type: scraper
+params:
+  mode: css_selector
+  url: "https://example.com"
+  selectors:
+    title: "h2.title"
+    content: "p.description"
+  output: "output/extract.csv"
+  output_sheet: "Sheet1"

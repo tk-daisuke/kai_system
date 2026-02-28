@@ -36,6 +36,7 @@ class ActionConfig:
         self.params: Dict[str, Any] = data.get("params", {})
         self.display_order: int = data.get("display_order", 999)
         self.icon: str = data.get("icon", "▶")
+        self.webhook_url: str = data.get("webhook_url", "")
         self._raw = data
 
     def to_dict(self) -> Dict[str, Any]:
@@ -50,6 +51,8 @@ class ActionConfig:
         d["display_order"] = self.display_order
         if not self.enabled:
             d["enabled"] = False
+        if self.webhook_url:
+            d["webhook_url"] = self.webhook_url
         if self.params:
             d["params"] = dict(self.params)
         return d

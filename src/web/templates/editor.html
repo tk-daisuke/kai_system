@@ -528,6 +528,11 @@
                 <div id="actionList"></div>
                 <button class="sidebar-add-btn" onclick="newAction()">+ アクションを追加</button>
             </div>
+            <div class="sidebar-divider"></div>
+            <div class="sidebar-section">
+                <div class="sidebar-label">📦 テンプレート</div>
+                <div id="templateList"></div>
+            </div>
         </div>
 
         <!-- 右パネル -->
@@ -560,6 +565,7 @@
         let actions = [];
         let actionTypes = {};
         let paramSchemas = {};
+        let templates = [];
         let selectedType = null; // 'group' or 'action'
         let selectedId = null;
 
@@ -580,15 +586,17 @@
 
         // ===== Load data =====
         async function loadAll() {
-            const [aRes, gRes, tRes] = await Promise.all([
+            const [aRes, gRes, tRes, tmplRes] = await Promise.all([
                 api('/api/config/actions'),
                 api('/api/config/groups'),
                 api('/api/config/action-types'),
+                api('/api/templates'),
             ]);
             actions = aRes.actions || [];
             groups = gRes.groups || [];
             actionTypes = tRes.types || [];
             paramSchemas = tRes.schemas || {};
+            templates = tmplRes.templates || [];
             renderSidebar();
         }
 
@@ -614,6 +622,18 @@
       <span class="item-badge">${escHtml(a.type)}</span>
     </div>
   `).join('');
+
+            // Templates
+            const tl = document.getElementById('templateList');
+            if (tl) {
+                tl.innerHTML = templates.map(t => `
+    <div class="sidebar-item" onclick="applyTemplate('${escHtml(t.id)}')" title="${escHtml(t.description)}">
+      <span class="item-icon">📄</span>
+      <span class="item-name">${escHtml(t.name)}</span>
+      <span class="item-badge">${escHtml(t.type)}</span>
+    </div>
+  `).join('') || '<div style="padding:4px 12px;font-size:.75rem;color:var(--text-muted)">テンプレートなし</div>';
+            }
         }
 
         function escHtml(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;'); }
@@ -723,11 +743,18 @@
         </label>
       </div>
 
+      <div class="form-field full">
+        <label>Webhook通知URL</label>
+        <input type="url" id="aWebhook" value="${escHtml(a.webhook_url || '')}" placeholder="https://hooks.slack.com/services/... または Discord Webhook URL">
+        <div class="help">タスク完了時にSlack/Discordへ通知（空欄で無効）</div>
+      </div>
+
       <div class="form-section-title" id="paramsTitle">${escHtml(schema.label || a.type)} パラメータ</div>
       <div class="form-grid full" id="paramsContainer">${paramsHtml}</div>
     </div>
     <div class="form-actions">
       <button class="btn btn-primary" onclick="saveAction('${escHtml(a.id)}')">💾 保存</button>
+      <button class="btn btn-ghost" onclick="saveAsTemplate()">📦 テンプレ保存</button>
       ${a.id ? `<button class="btn btn-danger" onclick="confirmDelete('action', '${escHtml(a.id)}')">🗑 削除</button>` : ''}
     </div>
   `;
@@ -761,6 +788,23 @@
                     break;
                 case 'number':
                     input = `<input type="number" id="p_${f.key}" value="${val}">`;
+                    break;
+                case 'key_value':
+                    const kvPairs = (typeof val === 'object' && val !== null && !Array.isArray(val)) ? val : {};
+                    const kvHtml = Object.entries(kvPairs).map(([k, v]) =>
+                        `<div class="kv-row" style="display:flex;gap:8px;margin-bottom:6px;align-items:center;">
+                            <input type="text" data-kv-key value="${escHtml(k)}" placeholder="カラム名" style="flex:1">
+                            <span style="color:var(--text-muted)">:</span>
+                            <input type="text" data-kv-val value="${escHtml(v)}" placeholder="CSSセレクタ" style="flex:2">
+                            <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.kv-row').remove()" style="padding:4px 8px;font-size:12px">✕</button>
+                        </div>`
+                    ).join('');
+                    input = `
+                        <div id="p_${f.key}" class="kv-container">
+                            <div id="kv_list_${f.key}">${kvHtml}</div>
+                            <button type="button" class="btn btn-ghost" onclick="addKvRow('${f.key}')" style="margin-top:4px; width:100%; border:1px dashed var(--border); font-size:.78rem">+ 追加</button>
+                        </div>
+                    `;
                     break;
                 case 'form_fills':
                     const items = Array.isArray(val) ? val : [];
@@ -827,6 +871,21 @@
             if (item) item.remove();
         }
 
+        function addKvRow(key) {
+            const list = document.getElementById(`kv_list_${key}`);
+            if (!list) return;
+            const row = document.createElement('div');
+            row.className = 'kv-row';
+            row.style.cssText = 'display:flex;gap:8px;margin-bottom:6px;align-items:center;';
+            row.innerHTML = `
+                <input type="text" data-kv-key value="" placeholder="カラム名" style="flex:1">
+                <span style="color:var(--text-muted)">:</span>
+                <input type="text" data-kv-val value="" placeholder="CSSセレクタ" style="flex:2">
+                <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.kv-row').remove()" style="padding:4px 8px;font-size:12px">✕</button>
+            `;
+            list.appendChild(row);
+        }
+
         function evaluateShowWhen() {
             const aTypeEl = document.getElementById('aType');
             if (!aTypeEl) return;
@@ -835,7 +894,7 @@
 
             const currentParams = {};
             for (const f of schema.fields) {
-                if (f.type !== 'form_fills') {
+                if (f.type !== 'form_fills' && f.type !== 'key_value') {
                     const el = document.getElementById(`p_${f.key}`);
                     if (el) {
                         currentParams[f.key] = el.type === 'checkbox' ? el.checked : el.value;
@@ -848,14 +907,16 @@
                     const conditionStr = el.getAttribute('data-show-when');
                     if (!conditionStr) return;
                     const condition = JSON.parse(conditionStr);
-                    let show = true;
-                    for (const [key, allowedValues] of Object.entries(condition)) {
-                        const actualVal = currentParams[key];
-                        // If the dependency element doesn't exist yet, we might want to hide by default
-                        if (actualVal === undefined || !allowedValues.includes(actualVal)) {
-                            show = false;
-                            break;
-                        }
+                    // Format: {field: "mode", value: "auto_table"} or {field: "mode", value: ["auto_table", "css_selector"]}
+                    const field = condition.field;
+                    const allowed = condition.value;
+                    const actualVal = currentParams[field];
+
+                    let show = false;
+                    if (Array.isArray(allowed)) {
+                        show = allowed.includes(actualVal);
+                    } else {
+                        show = actualVal === allowed;
                     }
                     el.style.display = show ? '' : 'none';
                 } catch (e) {
@@ -883,6 +944,19 @@
                 const fieldContainer = document.getElementById(`field_${f.key}`);
                 if (fieldContainer && fieldContainer.style.display === 'none') {
                     continue; // Skip hidden condition fields
+                }
+
+                if (f.type === 'key_value') {
+                    const container = document.getElementById(`p_${f.key}`);
+                    if (!container) continue;
+                    const kvObj = {};
+                    container.querySelectorAll('.kv-row').forEach(row => {
+                        const k = row.querySelector('[data-kv-key]').value.trim();
+                        const v = row.querySelector('[data-kv-val]').value.trim();
+                        if (k) kvObj[k] = v;
+                    });
+                    params[f.key] = kvObj;
+                    continue;
                 }
 
                 if (f.type === 'form_fills') {
@@ -959,6 +1033,7 @@
                 display_order: parseInt(document.getElementById('aOrder').value) || 999,
                 timezone: document.querySelector('input[name="aTz"]:checked').value,
                 enabled: document.getElementById('aEnabled').checked,
+                webhook_url: document.getElementById('aWebhook').value.trim(),
                 params: collectParams(),
             };
 
@@ -1003,6 +1078,44 @@
                 icon: '▶', display_order: actions.length + 1,
                 timezone: 'jst', enabled: true, params: {},
             });
+        }
+
+        // ===== Apply template =====
+        function applyTemplate(templateId) {
+            const t = templates.find(x => x.id === templateId);
+            if (!t) return;
+
+            selectedType = 'action';
+            selectedId = '__new__';
+            renderSidebar();
+            renderActionForm({
+                id: '', name: t.name, type: t.type, group: '',
+                icon: '▶', display_order: actions.length + 1,
+                timezone: 'jst', enabled: true, params: t.params || {},
+            });
+            showToast(`テンプレート「${t.name}」を適用しました`);
+        }
+
+        // ===== Save as template =====
+        async function saveAsTemplate() {
+            const type = document.getElementById('aType').value;
+            const name = document.getElementById('aName').value.trim();
+            if (!name) { showToast('名前を入力してからテンプレート保存してください', 'error'); return; }
+
+            const data = {
+                name: name,
+                description: `${name} のテンプレート`,
+                type: type,
+                params: collectParams(),
+            };
+
+            const res = await api('/api/templates', 'POST', data);
+            if (res.status === 'ok') {
+                showToast(`テンプレート「${name}」を保存しました`);
+                await loadAll();
+            } else {
+                showToast(res.error || 'テンプレート保存エラー', 'error');
+            }
         }
 
         // ===== Confirm delete =====

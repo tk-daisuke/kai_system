@@ -69,16 +69,68 @@ PARAM_SCHEMAS: Dict[str, Dict[str, Any]] = {
     },
     "scraper": {
         "label": "Webスクレーピング",
-        "description": "ブラウザを操作してCSVをダウンロードする",
+        "description": "WebページからCSS/テーブル/ブラウザ操作でデータを取得する",
         "fields": [
+            {
+                "key": "mode",
+                "label": "スクレーピングモード",
+                "type": "select",
+                "required": True,
+                "options": [
+                    {"value": "auto_table", "label": "テーブル自動検出 (pandas)"},
+                    {"value": "css_selector", "label": "CSSセレクタ指定 (BeautifulSoup)"},
+                    {"value": "browser_csv", "label": "ブラウザCSVダウンロード (Playwright)"},
+                ],
+                "default": "browser_csv",
+            },
             {
                 "key": "url",
                 "label": "対象URL",
                 "type": "url",
                 "required": True,
-                "placeholder": "https://analytics.example.com/login",
+                "placeholder": "https://example.com/data",
                 "help": "テンプレート変数を使用できます",
             },
+            # --- auto_table 固有フィールド ---
+            {
+                "key": "table_index",
+                "label": "テーブル番号",
+                "type": "number",
+                "required": False,
+                "default": 0,
+                "help": "ページ内の何番目のテーブルを取得するか（0始まり）",
+                "show_when": {"field": "mode", "value": "auto_table"},
+            },
+            # --- css_selector 固有フィールド ---
+            {
+                "key": "selectors",
+                "label": "CSSセレクタ定義",
+                "type": "key_value",
+                "required": False,
+                "help": "カラム名: CSSセレクタ の組み合わせ（例: タイトル: h2.title）",
+                "placeholder": "カラム名: CSSセレクタ",
+                "show_when": {"field": "mode", "value": "css_selector"},
+            },
+            # --- auto_table / css_selector 共通: 出力先 ---
+            {
+                "key": "output",
+                "label": "出力ファイルパス",
+                "type": "path",
+                "required": False,
+                "placeholder": "output/data.xlsx",
+                "help": ".xlsx で Excel、.csv で CSV出力",
+                "show_when": {"field": "mode", "value": ["auto_table", "css_selector"]},
+            },
+            {
+                "key": "output_sheet",
+                "label": "出力シート名",
+                "type": "text",
+                "required": False,
+                "default": "Sheet1",
+                "help": "Excel出力時のシート名",
+                "show_when": {"field": "mode", "value": ["auto_table", "css_selector"]},
+            },
+            # --- browser_csv 固有フィールド ---
             {
                 "key": "cdp_url",
                 "label": "Chrome DevTools URL",
@@ -86,6 +138,7 @@ PARAM_SCHEMAS: Dict[str, Dict[str, Any]] = {
                 "required": False,
                 "default": "http://localhost:9222",
                 "help": "Chrome を --remote-debugging-port=9222 で起動済みであること",
+                "show_when": {"field": "mode", "value": "browser_csv"},
             },
             {
                 "key": "form_fills",
@@ -93,6 +146,7 @@ PARAM_SCHEMAS: Dict[str, Dict[str, Any]] = {
                 "type": "form_fills",
                 "required": False,
                 "help": "ページ上のフォーム入力・ボタンクリック等を順番に定義します",
+                "show_when": {"field": "mode", "value": "browser_csv"},
                 "item_fields": [
                     {
                         "key": "selector",
@@ -132,9 +186,10 @@ PARAM_SCHEMAS: Dict[str, Dict[str, Any]] = {
                 "key": "download_button",
                 "label": "ダウンロードボタン",
                 "type": "text",
-                "required": True,
+                "required": False,
                 "placeholder": "button#csv_export, a.download-link",
                 "help": "CSVダウンロードをトリガーするボタンのCSSセレクタ",
+                "show_when": {"field": "mode", "value": "browser_csv"},
             },
             {
                 "key": "download_dir",
@@ -143,12 +198,56 @@ PARAM_SCHEMAS: Dict[str, Dict[str, Any]] = {
                 "required": False,
                 "placeholder": "~/Downloads",
                 "help": "空欄の場合はユーザーのDownloadsフォルダ",
+                "show_when": {"field": "mode", "value": "browser_csv"},
             },
             {
                 "key": "download_timeout",
                 "label": "ダウンロード待機（秒）",
                 "type": "number",
                 "default": 60,
+                "show_when": {"field": "mode", "value": "browser_csv"},
+            },
+        ],
+    },
+    "file_ops": {
+        "label": "ファイル操作",
+        "description": "ファイルのコピー・移動・ZIP圧縮を行う",
+        "fields": [
+            {
+                "key": "operation",
+                "label": "操作",
+                "type": "select",
+                "required": True,
+                "options": [
+                    {"value": "copy", "label": "コピー"},
+                    {"value": "move", "label": "移動"},
+                    {"value": "archive", "label": "ZIP圧縮"},
+                ],
+                "default": "copy",
+            },
+            {
+                "key": "source",
+                "label": "対象パス",
+                "type": "path",
+                "required": True,
+                "placeholder": "/path/to/source",
+                "help": "ファイルまたはディレクトリのパス",
+            },
+            {
+                "key": "destination",
+                "label": "出力先パス",
+                "type": "path",
+                "required": True,
+                "placeholder": "/path/to/destination",
+                "help": "コピー/移動先、またはZIPファイルのパス",
+            },
+            {
+                "key": "pattern",
+                "label": "ファイルパターン",
+                "type": "text",
+                "required": False,
+                "placeholder": "*.csv",
+                "help": "glob パターンで対象ファイルをフィルタ（例: *.csv, **/*.xlsx）",
             },
         ],
     },

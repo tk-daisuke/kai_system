@@ -1,25 +1,18 @@
-# Core
+# Core (flask, jinja2, werkzeug, pyyaml are vendored in vendor/)
 pyyaml>=6.0
+
+# Scraping - auto_table / css_selector modes
+requests>=2.28
+beautifulsoup4>=4.12
 pandas>=2.0
 openpyxl>=3.1
 
-# Scraping (Level 1-2)
-requests>=2.28
-beautifulsoup4>=4.12
-lxml>=4.9
-
-# Scraping (Level 3-4: browser session, optional)
+# Scraping - browser_csv mode (optional)
 # pip install playwright && playwright install chromium
 # playwright>=1.40
 
 # Windows Excel COM (Windows only, optional)
 # pywin32>=306
-
-# Notifications (optional)
-# jpholiday>=0.1.8
-
-# Build
-# pyinstaller>=6.0
 
 # Test
 pytest>=7.0

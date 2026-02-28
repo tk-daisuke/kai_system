@@ -1,30 +1,32 @@
-# kai_system リアーキテクチャ
+# kai_system TODO
 
-## Phase 1: コアリファクタリング
-- [x] ディレクトリ構造の作成
-- [x] `core/config_manager.py` - YAML設定読み込みシステム
-- [x] `core/action_base.py` - アクション基底クラス
-- [x] `core/action_manager.py` - アクション管理・実行（テンプレート展開統合）
-- [x] `core/group_manager.py` - グループ管理
-- [x] `core/template_engine.py` - URLテンプレート変数展開（{today}等）
-- [x] `actions/csv_download.py` - CSVダウンロードプラグイン
-- [x] `actions/scraper.py` - スクレーピングプラグイン（4モード: auto_table, css_selector, browser_session, browser_csv）
-- [x] `actions/shell_cmd.py` - シェルコマンドプラグイン
-- [x] `gui/main_window.py` - メインウィンドウ
-- [x] `gui/action_panel.py` - アクションボタンパネル
-- [x] `gui/history_panel.py` - 履歴パネル
-- [x] `infra/logger.py` - ログモジュール
-- [x] `infra/notifier.py` - 通知モジュール
-- [x] `config/actions.yaml` & `config/groups.yaml` - サンプル設定
-- [x] `src/app.py` - 新エントリーポイント
-- [x] `requirements.txt` 更新
-- [ ] 本番環境でのテスト（pip install pyyaml が必要）
+## Phase 2: スクレーピング機能拡充
+- [x] scraper.py にモード分岐追加 (auto_table / css_selector / browser_csv)
+- [x] auto_table モード実装 (requests + pandas.read_html)
+- [x] css_selector モード実装 (requests + BeautifulSoup)
+- [x] param_schema.py に mode フィールド + show_when 条件追加
+- [x] POST /api/scrape/preview エンドポイント追加
+- [x] requirements.txt に requests, beautifulsoup4, pandas, openpyxl 追加
 
-## Phase 2: スクレーピング機能（後日）
-- [ ] ScrapingAction のテスト・調整
-- [ ] ブラウザセッション接続テスト
-- [ ] 結果プレビュー
+## Phase 3: 拡張機能
+- [x] FileOperationAction (copy / move / archive) 新規作成
+- [x] file_ops スキーマを param_schema.py に追加
+- [x] app.py に file_ops import 追加
+- [x] notifier.py に Webhook 通知 (Slack / Discord) 追加
 
-## Phase 3: 拡張機能（後日）
-- [ ] FileOperationAction
-- [ ] 通知統合
+## Phase 4: UI/UX 強化
+- [x] 実行履歴の永続化 (JSON)
+- [x] 統計API (GET /api/stats, GET /api/execution-history)
+- [x] index.html に統計セクション追加
+- [x] style.css に統計パネルスタイル追加
+- [x] テンプレート管理API (GET/POST/DELETE /api/templates)
+- [x] config/templates/ にサンプルテンプレート作成
+
+## エディタUI改善
+- [x] evaluateShowWhen を {field, value} 形式に修正
+- [x] key_value フィールドタイプ追加 (css_selector の selectors 用)
+- [x] テンプレート選択・適用UI追加 (サイドバー + applyTemplate)
+- [x] テンプレート保存ボタン追加 (saveAsTemplate)
+- [x] Webhook通知URL フィールドをアクション設定に追加
+- [x] ActionConfig に webhook_url フィールド追加
+- [x] 実行完了時の Webhook 通知連携

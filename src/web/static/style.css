@@ -450,6 +450,59 @@ body {
     font-size: 0.85rem;
 }
 
+/* ---- Stats Panel ---- */
+.stats-panel {
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    padding: 16px;
+    border: 1px solid var(--border);
+    margin-bottom: 12px;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.stat-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 8px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+}
+
+.stat-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+}
+
+.stat-value.stat-success {
+    color: var(--success);
+}
+
+.stat-value.stat-error {
+    color: var(--error);
+}
+
+.stat-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+.stats-recent {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 4px 0;
+}
+
 /* ---- Footer ---- */
 .footer {
     padding: 12px 0;

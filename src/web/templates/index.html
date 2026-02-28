@@ -87,6 +87,31 @@
                 <p class="progress-detail" id="progressDetail"></p>
             </section>
 
+            <section class="panel stats-panel" id="statsPanel">
+                <div class="panel-header">
+                    <h2>📊 統計</h2>
+                </div>
+                <div class="stats-grid" id="statsGrid">
+                    <div class="stat-card">
+                        <span class="stat-value" id="statTotal">-</span>
+                        <span class="stat-label">総実行数</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value stat-success" id="statSuccess">-</span>
+                        <span class="stat-label">成功</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value stat-error" id="statFailed">-</span>
+                        <span class="stat-label">失敗</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value" id="statRate">-</span>
+                        <span class="stat-label">成功率</span>
+                    </div>
+                </div>
+                <div class="stats-recent" id="statsRecent"></div>
+            </section>
+
             <section class="panel history-panel">
                 <div class="panel-header">
                     <h2>📋 履歴</h2>
@@ -154,7 +179,9 @@
                 if (e.key === 'Enter') applyWeekInput();
             });
             fetchStatus();
+            fetchStats();
             setInterval(fetchStatus, 1500);
+            setInterval(fetchStats, 10000);
             document.getElementById('dtFrom').addEventListener('change', onPeriodChange);
             document.getElementById('dtTo').addEventListener('change', onPeriodChange);
         });
@@ -450,6 +477,25 @@
             document.getElementById('groupContainer').innerHTML = '';
             lastHistoryCount = 0;
             fetchStatus();
+        }
+
+        async function fetchStats() {
+            try {
+                const res = await fetch('/api/stats');
+                const data = await res.json();
+                document.getElementById('statTotal').textContent = data.total;
+                document.getElementById('statSuccess').textContent = data.success;
+                document.getElementById('statFailed').textContent = data.failed;
+                document.getElementById('statRate').textContent = data.success_rate + '%';
+
+                const recent = data.recent_7d;
+                const el = document.getElementById('statsRecent');
+                if (recent.total > 0) {
+                    el.textContent = `直近7日: ${recent.total}件実行 / ${recent.success}件成功`;
+                } else {
+                    el.textContent = '直近7日: 実行なし';
+                }
+            } catch (e) { }
         }
 
         function setFilter(filter, btn) {
