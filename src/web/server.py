@@ -377,6 +377,11 @@ class WebServer:
             if mode not in ("auto_table", "css_selector"):
                 return jsonify({"error": "プレビューは auto_table / css_selector モードのみ対応です"}), 400
 
+            if mode == "css_selector":
+                selectors = data.get("selectors", {})
+                if not selectors:
+                    return jsonify({"error": "selectors が指定されていません"}), 400
+
             try:
                 import pandas as pd
                 import requests as http_requests
@@ -403,8 +408,6 @@ class WebServer:
                 else:  # css_selector
                     from bs4 import BeautifulSoup
                     selectors = data.get("selectors", {})
-                    if not selectors:
-                        return jsonify({"error": "selectors が指定されていません"}), 400
 
                     soup = BeautifulSoup(resp.text, "html.parser")
                     result = {}
