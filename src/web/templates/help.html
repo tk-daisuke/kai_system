@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>kai_system - ヘルプ</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .help-app {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 24px 16px;
+        }
+
+        .help-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .help-header h1 {
+            font-size: 1.3rem;
+            background: linear-gradient(135deg, #6c8cff, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .help-nav {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+
+        .help-nav-btn {
+            padding: 8px 16px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--bg-card);
+            color: var(--text-secondary);
+            font-family: inherit;
+            font-size: 0.82rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .help-nav-btn:hover {
+            border-color: var(--accent);
+            color: var(--text-primary);
+        }
+
+        .help-nav-btn.active {
+            background: var(--accent-bg);
+            color: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .help-section {
+            display: none;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .help-section.active {
+            display: block;
+        }
+
+        .help-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px 24px;
+            margin-bottom: 16px;
+        }
+
+        .help-card h2 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: var(--accent);
+        }
+
+        .help-card h3 {
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin: 16px 0 8px;
+        }
+
+        .help-card p,
+        .help-card li {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            line-height: 1.7;
+        }
+
+        .help-card ul,
+        .help-card ol {
+            padding-left: 20px;
+            margin: 8px 0;
+        }
+
+        .help-card li {
+            margin-bottom: 4px;
+        }
+
+        .help-card code {
+            background: var(--bg-secondary);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'SF Mono', 'Consolas', monospace;
+            font-size: 0.8rem;
+            color: var(--accent);
+        }
+
+        .var-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+        }
+
+        .var-table th,
+        .var-table td {
+            text-align: left;
+            padding: 8px 12px;
+            font-size: 0.82rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .var-table th {
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.72rem;
+            text-transform: uppercase;
+        }
+
+        .var-table td:first-child {
+            font-family: 'SF Mono', 'Consolas', monospace;
+            color: var(--accent);
+            white-space: nowrap;
+        }
+
+        .var-table td {
+            color: var(--text-secondary);
+        }
+
+        .faq-item {
+            margin-bottom: 12px;
+            padding: 12px 16px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+        }
+
+        .faq-q {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+        }
+
+        .faq-a {
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        .step-list {
+            counter-reset: step;
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .step-list li {
+            counter-increment: step;
+            position: relative;
+            padding-left: 36px;
+            margin-bottom: 16px;
+        }
+
+        .step-list li::before {
+            content: counter(step);
+            position: absolute;
+            left: 0;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: var(--accent);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+
+        .type-card {
+            display: flex;
+            gap: 12px;
+            padding: 14px 16px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 3px solid var(--accent);
+        }
+
+        .type-card-icon {
+            font-size: 1.5rem;
+            flex-shrink: 0;
+        }
+
+        .type-card-body h4 {
+            font-size: 0.88rem;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .type-card-body p {
+            font-size: 0.8rem;
+        }
+
+        .shortcut-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .shortcut-table td {
+            padding: 6px 12px;
+            font-size: 0.82rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .shortcut-table td:first-child {
+            font-family: 'SF Mono', 'Consolas', monospace;
+            color: var(--accent);
+            white-space: nowrap;
+            width: 160px;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @media (max-width: 640px) {
+            .help-app { padding: 12px; }
+            .help-nav { gap: 4px; }
+            .help-nav-btn { padding: 6px 10px; font-size: 0.75rem; }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="help-app">
+        <div class="help-header">
+            <h1>kai_system ヘルプ</h1>
+            <div>
+                <a href="/" class="btn btn-ghost" style="text-decoration:none">&#8592; ダッシュボード</a>
+                <a href="/editor" class="btn btn-ghost" style="text-decoration:none">&#9881; エディタ</a>
+            </div>
+        </div>
+
+        <div class="help-nav">
+            <button class="help-nav-btn active" onclick="showSection('start', this)">はじめに</button>
+            <button class="help-nav-btn" onclick="showSection('actions', this)">アクションタイプ</button>
+            <button class="help-nav-btn" onclick="showSection('vars', this)">テンプレート変数</button>
+            <button class="help-nav-btn" onclick="showSection('shortcuts', this)">ショートカット</button>
+            <button class="help-nav-btn" onclick="showSection('faq', this)">FAQ</button>
+        </div>
+
+        <!-- はじめに -->
+        <div class="help-section active" id="section-start">
+            <div class="help-card">
+                <h2>kai_system とは</h2>
+                <p>kai_system は、日常のPC作業を自動化するためのツールです。
+                    CSVダウンロード、Webスクレーピング、ファイル操作などを、ボタンひとつで実行できます。</p>
+            </div>
+
+            <div class="help-card">
+                <h2>はじめかた (3ステップ)</h2>
+                <ol class="step-list">
+                    <li>
+                        <strong>設定エディタを開く</strong><br>
+                        ダッシュボード右上の歯車アイコン、または「設定エディタを開く」ボタンをクリックします。
+                    </li>
+                    <li>
+                        <strong>テンプレートを選ぶ</strong><br>
+                        左サイドバーの「テンプレート」から、やりたいことに近いものを選びます。
+                        URL やファイルパスなどを自分の環境に合わせて書き換えます。
+                    </li>
+                    <li>
+                        <strong>ダッシュボードで実行</strong><br>
+                        ダッシュボードに戻ると、登録したアクションがボタンとして表示されます。
+                        日付を選んでボタンを押すだけで、自動処理が始まります。
+                    </li>
+                </ol>
+            </div>
+
+            <div class="help-card">
+                <h2>画面の説明</h2>
+                <h3>ダッシュボード (/)</h3>
+                <ul>
+                    <li><strong>期間指定バー</strong> - 処理対象の日付範囲を設定します。「昨日分」「先週」などのプリセットも使えます。</li>
+                    <li><strong>アクションボタン</strong> - クリックすると確認画面が表示され、実行できます。</li>
+                    <li><strong>統計パネル</strong> - 実行回数や成功率がひと目で分かります。</li>
+                    <li><strong>履歴</strong> - 実行結果のログが時系列で表示されます。</li>
+                </ul>
+                <h3>設定エディタ (/editor)</h3>
+                <ul>
+                    <li><strong>左サイドバー</strong> - グループ、アクション、テンプレートの一覧です。</li>
+                    <li><strong>右パネル</strong> - 選択した項目の設定を編集できます。</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- アクションタイプ -->
+        <div class="help-section" id="section-actions">
+            <div class="help-card">
+                <h2>アクションタイプ一覧</h2>
+
+                <div class="type-card">
+                    <span class="type-card-icon">&#128190;</span>
+                    <div class="type-card-body">
+                        <h4>CSVダウンロード (csv_download)</h4>
+                        <p>ブラウザでログインした状態のセッションを使い、CSVファイルをダウンロードしてExcelに自動転記します。
+                            社内システムやWebアプリからのデータ取得に最適です。</p>
+                    </div>
+                </div>
+
+                <div class="type-card">
+                    <span class="type-card-icon">&#128269;</span>
+                    <div class="type-card-body">
+                        <h4>スクレーピング (scraper)</h4>
+                        <p>Webページからデータを自動取得します。3つのモードがあります:</p>
+                        <ul>
+                            <li><strong>テーブル自動取得</strong> - HTMLテーブルを自動検出して取得</li>
+                            <li><strong>要素を指定して取得</strong> - CSSセレクタで特定の情報を抽出</li>
+                            <li><strong>ブラウザCSV取得</strong> - ログインが必要なサイトからCSVをダウンロード</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="type-card">
+                    <span class="type-card-icon">&#128193;</span>
+                    <div class="type-card-body">
+                        <h4>ファイル操作 (file_ops)</h4>
+                        <p>ファイルのコピー、移動、ZIP圧縮を自動で行います。
+                            日次バックアップやファイル整理の自動化に便利です。</p>
+                    </div>
+                </div>
+
+                <div class="type-card">
+                    <span class="type-card-icon">&#9000;</span>
+                    <div class="type-card-body">
+                        <h4>シェルコマンド (shell_cmd)</h4>
+                        <p>任意のコマンドを実行します。APIからのデータ取得や、
+                            独自スクリプトの実行など、自由度の高い自動化が可能です。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- テンプレート変数 -->
+        <div class="help-section" id="section-vars">
+            <div class="help-card">
+                <h2>テンプレート変数リファレンス</h2>
+                <p>URL やコマンドの中に <code>{変数名}</code> と書くと、実行時に自動で置き換わります。
+                    期間指定バーで設定した日時が基準になります。</p>
+
+                <h3>日付変数</h3>
+                <table class="var-table">
+                    <thead>
+                        <tr><th>変数</th><th>説明</th><th>例</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>{today}</td><td>今日の日付</td><td>20260306</td></tr>
+                        <tr><td>{yesterday}</td><td>昨日の日付</td><td>20260305</td></tr>
+                        <tr><td>{today_jp}</td><td>今日 (日本語)</td><td>2026/03/06</td></tr>
+                        <tr><td>{yesterday_jp}</td><td>昨日 (日本語)</td><td>2026/03/05</td></tr>
+                    </tbody>
+                </table>
+
+                <h3>期間変数 (FROM / TO)</h3>
+                <table class="var-table">
+                    <thead>
+                        <tr><th>変数</th><th>説明</th><th>例</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>{from}</td><td>開始日時</td><td>20260305000000</td></tr>
+                        <tr><td>{to}</td><td>終了日時</td><td>20260306000000</td></tr>
+                        <tr><td>{from_date}</td><td>開始日</td><td>20260305</td></tr>
+                        <tr><td>{to_date}</td><td>終了日</td><td>20260306</td></tr>
+                        <tr><td>{from_date_jp}</td><td>開始日 (日本語)</td><td>2026/03/05</td></tr>
+                        <tr><td>{to_date_jp}</td><td>終了日 (日本語)</td><td>2026/03/06</td></tr>
+                        <tr><td>{from_iso}</td><td>開始日 ISO形式</td><td>2026-03-05</td></tr>
+                        <tr><td>{to_iso}</td><td>終了日 ISO形式</td><td>2026-03-06</td></tr>
+                    </tbody>
+                </table>
+
+                <h3>週変数</h3>
+                <table class="var-table">
+                    <thead>
+                        <tr><th>変数</th><th>説明</th><th>例</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>{week}</td><td>ISO週番号</td><td>10</td></tr>
+                        <tr><td>{from_week}</td><td>FROM日の週番号</td><td>09</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ショートカット -->
+        <div class="help-section" id="section-shortcuts">
+            <div class="help-card">
+                <h2>キーボードショートカット</h2>
+                <h3>設定エディタ</h3>
+                <table class="shortcut-table">
+                    <tr><td>Ctrl + S / Cmd + S</td><td>現在の設定を保存</td></tr>
+                    <tr><td>Ctrl + N / Cmd + N</td><td>新しいアクションを作成</td></tr>
+                    <tr><td>Escape</td><td>ダイアログを閉じる</td></tr>
+                    <tr><td>/</td><td>検索バーにフォーカス</td></tr>
+                </table>
+                <h3>ダッシュボード</h3>
+                <table class="shortcut-table">
+                    <tr><td>Escape</td><td>モーダルを閉じる</td></tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- FAQ -->
+        <div class="help-section" id="section-faq">
+            <div class="help-card">
+                <h2>よくある質問</h2>
+
+                <div class="faq-item">
+                    <div class="faq-q">Q. アクションを間違えて削除してしまいました</div>
+                    <div class="faq-a">削除後5秒以内なら「元に戻す」ボタンで復元できます。
+                        また、削除時にバックアップが自動作成されるので、設定エディタの「バックアップ」から復元することもできます。</div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-q">Q. 実行したら「タイムアウト」エラーになりました</div>
+                    <div class="faq-a">ネットワーク接続を確認してください。VPNが必要なサイトにアクセスしていないか確認してください。
+                        それでも解決しない場合は、設定のタイムアウト値を大きくしてみてください。</div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-q">Q. CSVダウンロード時にログインが必要なサイトはどうすれば?</div>
+                    <div class="faq-a">「ブラウザCSV取得」モードを使ってください。先にブラウザで手動ログインしておくと、
+                        そのセッションを利用してCSVをダウンロードできます。</div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-q">Q. 設定を別のPCに移行できますか?</div>
+                    <div class="faq-a">設定エディタの「エクスポート」でYAMLファイルとしてダウンロードし、
+                        移行先で「インポート」することで設定を移行できます。</div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-q">Q. テスト実行とは何ですか?</div>
+                    <div class="faq-a">ダッシュボードのアクション実行確認画面にある「テスト実行」ボタンを使うと、
+                        実際にはアクションを実行せず、テンプレート変数の展開結果と設定のバリデーションだけを確認できます。
+                        本番実行前の確認に便利です。</div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-q">Q. Webhook通知を設定したいです</div>
+                    <div class="faq-a">設定エディタでアクションを編集し、「Webhook通知URL」にSlackまたはDiscordのWebhook URLを入力してください。
+                        アクション完了時に自動で通知が送信されます。URLに「discord」が含まれる場合はDiscord形式、
+                        それ以外はSlack形式で送信されます。</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showSection(name, btn) {
+            document.querySelectorAll('.help-section').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.help-nav-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById('section-' + name).classList.add('active');
+            btn.classList.add('active');
+        }
+    </script>
+</body>
+
+</html>

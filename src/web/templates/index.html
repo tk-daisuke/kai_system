@@ -21,6 +21,7 @@
                 <span class="sse-indicator" id="sseIndicator" title="リアルタイム接続"></span>
             </div>
             <div class="header-right">
+                <button class="btn btn-ghost" onclick="location.href='/help'" title="ヘルプ">?</button>
                 <button class="btn btn-ghost" onclick="location.href='/editor'" title="設定エディタ">&#9881;</button>
                 <button class="btn btn-ghost" onclick="reloadConfig()" title="設定を再読み込み">&#128260;</button>
             </div>
@@ -132,6 +133,9 @@
                 </div>
                 <div class="daily-chart" id="dailyChart"></div>
                 <div class="stats-recent" id="statsRecent"></div>
+                <div style="text-align:center;margin-top:8px;">
+                    <button class="filter-btn" onclick="toggleLogPanel()" title="ログを表示">&#128221; ログを表示</button>
+                </div>
             </section>
 
             <section class="panel history-panel">
@@ -141,10 +145,33 @@
                         <button class="filter-btn active" onclick="setFilter('all', this)">全て</button>
                         <button class="filter-btn" onclick="setFilter('success', this)">成功</button>
                         <button class="filter-btn" onclick="setFilter('error', this)">失敗</button>
+                        <a href="/api/execution-history/export" class="filter-btn" title="CSVエクスポート" style="text-decoration:none">&#128229; CSV</a>
                     </div>
                 </div>
                 <div class="history-list" id="historyList">
                     <p class="empty-state">まだ履歴はありません</p>
+                </div>
+            </section>
+
+            <!-- ログパネル -->
+            <section class="panel log-panel" id="logPanel" style="display:none;">
+                <div class="panel-header">
+                    <h2>&#128221; ログ</h2>
+                    <div class="filter-group">
+                        <select id="logLevel" class="log-filter-select" onchange="fetchLogs()">
+                            <option value="">全レベル</option>
+                            <option value="INFO">INFO</option>
+                            <option value="WARNING">WARNING</option>
+                            <option value="ERROR">ERROR</option>
+                            <option value="SUCCESS">SUCCESS</option>
+                        </select>
+                        <input type="text" id="logSearch" class="log-search-input" placeholder="&#128269; 検索..." onkeyup="if(event.key==='Enter')fetchLogs()">
+                        <button class="filter-btn" onclick="fetchLogs()">&#128260;</button>
+                        <button class="filter-btn" onclick="toggleLogPanel()">&#10005;</button>
+                    </div>
+                </div>
+                <div class="log-list" id="logList">
+                    <p class="empty-state">ログを読み込み中...</p>
                 </div>
             </section>
         </main>
@@ -772,6 +799,46 @@
 
         async function stopExecution() { await fetch('/api/stop', { method: 'POST' }); }
 
+        // ---- ログパネル ----
+        function toggleLogPanel() {
+            const panel = document.getElementById('logPanel');
+            if (panel.style.display === 'none') {
+                panel.style.display = 'block';
+                fetchLogs();
+            } else {
+                panel.style.display = 'none';
+            }
+        }
+
+        async function fetchLogs() {
+            try {
+                const level = document.getElementById('logLevel').value;
+                const search = document.getElementById('logSearch').value;
+                const params = new URLSearchParams({ lines: 100 });
+                if (level) params.set('level', level);
+                if (search) params.set('search', search);
+                const res = await fetch('/api/logs?' + params);
+                const data = await res.json();
+                const list = document.getElementById('logList');
+                if (!data.lines || data.lines.length === 0) {
+                    list.innerHTML = '<p class="empty-state">ログがありません</p>';
+                    return;
+                }
+                list.innerHTML = data.lines.map(line => {
+                    let cls = '';
+                    if (line.includes('[ERROR]')) cls = 'error';
+                    else if (line.includes('[WARNING]')) cls = 'warning';
+                    else if (line.includes('[SUCCESS]')) cls = 'success';
+                    return `<div class="log-line ${cls}">${escapeHtml(line)}</div>`;
+                }).join('');
+                list.scrollTop = list.scrollHeight;
+            } catch (e) { }
+        }
+
+        function escapeHtml(s) {
+            return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+
         async function reloadConfig() {
             await fetch('/api/reload', { method: 'POST' });
             document.getElementById('groupContainer').querySelectorAll('.group-card').forEach(el => el.remove());
@@ -837,6 +904,10 @@
             btn.classList.add('active');
             fetchStatus();
         }
+        // ---- キーボードショートカット ----
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeModal();
+        });
     </script>
 </body>
 

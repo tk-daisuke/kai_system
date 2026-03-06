@@ -578,8 +578,11 @@
             <span style="color:var(--text-muted); font-size:.82rem">⚙ 設定エディタ</span>
         </div>
         <div class="editor-header-right">
-            <button class="btn btn-ghost" onclick="location.href='/'">← ダッシュボードへ戻る</button>
-            <button class="btn btn-ghost" onclick="backupConfig()">📋 バックアップ</button>
+            <button class="btn btn-ghost" onclick="location.href='/'">&#8592; ダッシュボード</button>
+            <button class="btn btn-ghost" onclick="location.href='/help'">? ヘルプ</button>
+            <button class="btn btn-ghost" onclick="exportConfig()">&#128229; エクスポート</button>
+            <button class="btn btn-ghost" onclick="showImportDialog()">&#128228; インポート</button>
+            <button class="btn btn-ghost" onclick="backupConfig()">&#128203; バックアップ</button>
         </div>
     </div>
 
@@ -587,8 +590,13 @@
     <div class="editor-wrap">
         <!-- 左パネル -->
         <div class="editor-sidebar" id="sidebar">
+            <div class="sidebar-section" style="padding:0 12px 8px">
+                <input type="text" id="sidebarSearch" class="sidebar-search"
+                    placeholder="&#128269; 検索..." onkeyup="filterSidebar(this.value)"
+                    style="width:100%;background:var(--bg-main,var(--bg-secondary));border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:.78rem;color:var(--text-primary);">
+            </div>
             <div class="sidebar-section">
-                <div class="sidebar-label">📁 グループ</div>
+                <div class="sidebar-label">&#128193; グループ</div>
                 <div id="groupList"></div>
                 <button class="sidebar-add-btn" onclick="newGroup()">+ グループを追加</button>
             </div>
@@ -826,8 +834,9 @@
     </div>
     <div class="form-actions">
       <button class="btn btn-primary" onclick="saveAction('${escHtml(a.id)}')">💾 保存</button>
-      <button class="btn btn-ghost" onclick="saveAsTemplate()">📦 この設定をテンプレートとして保存</button>
-      ${a.id ? `<button class="btn btn-danger" onclick="confirmDelete('action', '${escHtml(a.id)}')">🗑 削除</button>` : ''}
+      <button class="btn btn-ghost" onclick="saveAsTemplate()">&#128230; テンプレ保存</button>
+      ${a.id && a.id !== '__new__' ? `<button class="btn btn-ghost" onclick="duplicateAction('${escHtml(a.id)}')">&#128203; 複製</button>` : ''}
+      ${a.id ? `<button class="btn btn-danger" onclick="confirmDelete('action', '${escHtml(a.id)}')">&#128465; 削除</button>` : ''}
     </div>
   `;
             setTimeout(evaluateShowWhen, 10);
@@ -1254,22 +1263,22 @@
 
         async function doDelete() {
             closeConfirm();
-            let res;
-            if (pendingDeleteType === 'group') {
-                res = await api(`/api/config/groups/${encodeURIComponent(pendingDeleteId)}`, 'DELETE');
+            if (pendingDeleteType === 'action') {
+                // Undo付きソフトデリート
+                await softDeleteAction(pendingDeleteId);
             } else {
-                res = await api(`/api/config/actions/${encodeURIComponent(pendingDeleteId)}`, 'DELETE');
-            }
-            if (res.status === 'ok') {
-                showToast('削除しました');
-                selectedType = null;
-                selectedId = null;
-                await loadAll();
-                document.getElementById('editorMain').innerHTML = `
-      <div class="editor-empty"><div class="icon">📝</div><div>項目を選択してください</div></div>
-    `;
-            } else {
-                showToast(res.message || 'エラー', 'error');
+                const res = await api(`/api/config/groups/${encodeURIComponent(pendingDeleteId)}`, 'DELETE');
+                if (res.status === 'ok') {
+                    showToast('削除しました');
+                    selectedType = null;
+                    selectedId = null;
+                    await loadAll();
+                    document.getElementById('editorMain').innerHTML = `
+                        <div class="editor-empty"><div class="icon">&#128221;</div><div>項目を選択してください</div></div>
+                    `;
+                } else {
+                    showToast(res.message || 'エラー', 'error');
+                }
             }
         }
 
@@ -1280,6 +1289,115 @@
                 showToast(`バックアップ作成: ${res.timestamp}`);
             }
         }
+
+        // ===== Duplicate =====
+        async function duplicateAction(id) {
+            const res = await api(`/api/config/actions/${encodeURIComponent(id)}/duplicate`, 'POST');
+            if (res.status === 'ok') {
+                showToast(`「${res.action.name}」を作成しました`);
+                await loadAll();
+                selectAction(res.action.id);
+            } else {
+                showToast(res.message || 'エラー', 'error');
+            }
+        }
+
+        // ===== Undo delete =====
+        let undoToastEl = null;
+        async function softDeleteAction(id) {
+            const res = await api(`/api/config/actions/${encodeURIComponent(id)}/soft-delete`, 'DELETE');
+            if (res.status === 'ok') {
+                selectedType = null;
+                selectedId = null;
+                await loadAll();
+                document.getElementById('editorMain').innerHTML = `
+                    <div class="editor-empty"><div class="icon">&#128221;</div><div>項目を選択してください</div></div>
+                `;
+                showUndoToast();
+            } else {
+                showToast(res.message || 'エラー', 'error');
+            }
+        }
+
+        function showUndoToast() {
+            const t = document.getElementById('toast');
+            t.innerHTML = '削除しました <button onclick="undoDelete()" style="margin-left:8px;background:var(--accent);color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:.78rem">元に戻す</button>';
+            t.className = 'toast toast-success show';
+            setTimeout(() => { if (t.classList.contains('show')) t.classList.remove('show'); }, 5000);
+        }
+
+        async function undoDelete() {
+            const res = await api('/api/config/undo', 'POST');
+            if (res.status === 'ok') {
+                showToast('元に戻しました');
+                await loadAll();
+                if (res.restored && res.restored.id) {
+                    selectAction(res.restored.id);
+                }
+            } else {
+                showToast(res.message || '元に戻せませんでした', 'error');
+            }
+        }
+
+        // ===== Export / Import =====
+        function exportConfig() {
+            window.location.href = '/api/config/export';
+        }
+
+        function showImportDialog() {
+            const yaml = prompt('インポートするYAMLを貼り付けてください:');
+            if (!yaml) return;
+            importConfig(yaml);
+        }
+
+        async function importConfig(yamlContent) {
+            const res = await api('/api/config/import', 'POST', { yaml: yamlContent });
+            if (res.status === 'ok') {
+                showToast(`インポート完了: アクション${res.imported.actions}件, グループ${res.imported.groups}件`);
+                await loadAll();
+            } else {
+                showToast(res.error || 'インポートエラー', 'error');
+            }
+        }
+
+        // ===== Sidebar search =====
+        function filterSidebar(query) {
+            const q = query.toLowerCase().trim();
+            document.querySelectorAll('#groupList .sidebar-item, #actionList .sidebar-item').forEach(el => {
+                const name = el.querySelector('.item-name')?.textContent?.toLowerCase() || '';
+                const badge = el.querySelector('.item-badge')?.textContent?.toLowerCase() || '';
+                el.style.display = (!q || name.includes(q) || badge.includes(q)) ? '' : 'none';
+            });
+        }
+
+        // ===== Keyboard shortcuts =====
+        document.addEventListener('keydown', (e) => {
+            // Ctrl+S / Cmd+S: Save
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                if (selectedType === 'action' && selectedId) {
+                    const btn = document.querySelector('.form-actions .btn-primary');
+                    if (btn) btn.click();
+                } else if (selectedType === 'group' && selectedId) {
+                    const btn = document.querySelector('.form-actions .btn-primary');
+                    if (btn) btn.click();
+                }
+            }
+            // Ctrl+N / Cmd+N: New action
+            if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+                e.preventDefault();
+                newAction();
+            }
+            // / : Focus search
+            if (e.key === '/' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+                e.preventDefault();
+                document.getElementById('sidebarSearch')?.focus();
+            }
+            // Escape: Close confirm dialog
+            if (e.key === 'Escape') {
+                closeConfirm();
+            }
+        });
 
         // ===== Init =====
         loadAll();

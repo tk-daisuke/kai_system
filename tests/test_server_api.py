@@ -216,6 +216,179 @@ class TestStatsDaily:
         assert len(data["daily"]) == 7
 
 
+class TestDuplicateAPI:
+
+    def test_duplicate_action(self, client):
+        """アクション複製"""
+        # 元アクションを作成
+        client.post("/api/config/actions",
+                     json={"id": "dup_orig", "name": "Original", "type": "shell_cmd",
+                           "group": "", "params": {"command": "echo test"}},
+                     content_type="application/json")
+        # 複製
+        r = client.post("/api/config/actions/dup_orig/duplicate",
+                        content_type="application/json")
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert data["status"] == "ok"
+        assert data["action"]["id"] == "dup_orig_copy"
+        assert "コピー" in data["action"]["name"]
+        # クリーンアップ
+        client.delete("/api/config/actions/dup_orig")
+        client.delete("/api/config/actions/dup_orig_copy")
+
+    def test_duplicate_nonexistent(self, client):
+        r = client.post("/api/config/actions/nonexistent_xxx/duplicate",
+                        content_type="application/json")
+        assert r.status_code == 404
+
+
+class TestUndoAPI:
+
+    def test_soft_delete_and_undo(self, client):
+        """ソフトデリート + Undo"""
+        # アクションを作成
+        client.post("/api/config/actions",
+                     json={"id": "undo_test", "name": "UndoTest", "type": "shell_cmd",
+                           "group": "", "params": {"command": "echo hi"}},
+                     content_type="application/json")
+        # ソフトデリート
+        r = client.delete("/api/config/actions/undo_test/soft-delete")
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert data["undo_available"] is True
+
+        # 削除確認
+        r = client.get("/api/config/actions")
+        actions = json.loads(r.data)["actions"]
+        assert all(a["id"] != "undo_test" for a in actions)
+
+        # Undo
+        r = client.post("/api/config/undo", content_type="application/json")
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert data["status"] == "ok"
+        assert data["restored"]["id"] == "undo_test"
+
+        # 復元確認
+        r = client.get("/api/config/actions")
+        actions = json.loads(r.data)["actions"]
+        assert any(a["id"] == "undo_test" for a in actions)
+
+        # クリーンアップ
+        client.delete("/api/config/actions/undo_test")
+
+    def test_undo_without_buffer(self, client):
+        r = client.post("/api/config/undo", content_type="application/json")
+        assert r.status_code == 404
+
+
+class TestExportImportAPI:
+
+    def test_export(self, client):
+        r = client.get("/api/config/export")
+        assert r.status_code == 200
+        assert "application/x-yaml" in r.content_type
+        assert b"actions" in r.data
+
+    def test_import(self, client):
+        yaml_content = """
+groups:
+  - name: ImportTestGroup
+    display_order: 99
+    color: "#FF0000"
+    icon: "T"
+actions:
+  - id: import_test_action
+    name: ImportTest
+    type: shell_cmd
+    params:
+      command: echo imported
+"""
+        r = client.post("/api/config/import",
+                        json={"yaml": yaml_content},
+                        content_type="application/json")
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert data["imported"]["actions"] >= 1
+
+        # クリーンアップ
+        client.delete("/api/config/actions/import_test_action")
+        client.delete("/api/config/groups/ImportTestGroup")
+
+    def test_import_invalid_yaml(self, client):
+        r = client.post("/api/config/import",
+                        json={"yaml": ":::invalid"},
+                        content_type="application/json")
+        assert r.status_code == 400
+
+    def test_import_empty(self, client):
+        r = client.post("/api/config/import",
+                        json={},
+                        content_type="application/json")
+        assert r.status_code == 400
+
+
+class TestSearchAPI:
+
+    def test_search_empty(self, client):
+        r = client.get("/api/config/search?q=")
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert data["actions"] == []
+        assert data["groups"] == []
+
+    def test_search_actions(self, client):
+        # テスト用アクションを作成
+        client.post("/api/config/actions",
+                     json={"id": "search_test", "name": "SearchableAction", "type": "shell_cmd",
+                           "group": "", "params": {}},
+                     content_type="application/json")
+        r = client.get("/api/config/search?q=searchable")
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert any(a["id"] == "search_test" for a in data["actions"])
+        # クリーンアップ
+        client.delete("/api/config/actions/search_test")
+
+
+class TestHealthAPI:
+
+    def test_health(self, client):
+        r = client.get("/api/health")
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert data["status"] == "ok"
+        assert "timestamp" in data
+        assert "actions" in data
+        assert "groups" in data
+
+
+class TestLogsAPI:
+
+    def test_logs(self, client):
+        r = client.get("/api/logs")
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert "lines" in data
+        assert "available_dates" in data
+
+    def test_logs_with_filter(self, client):
+        r = client.get("/api/logs?level=ERROR&lines=10")
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert "lines" in data
+
+
+class TestExecutionHistoryExport:
+
+    def test_csv_export(self, client):
+        r = client.get("/api/execution-history/export")
+        assert r.status_code == 200
+        assert "text/csv" in r.content_type
+        assert b"timestamp" in r.data  # CSVヘッダー
+
+
 class TestHTMLPages:
 
     def test_index_page(self, client):
@@ -228,6 +401,14 @@ class TestHTMLPages:
         assert "dryrunBtn" in html  # ドライランボタン
         assert "welcomeGuide" in html  # ウェルカムガイド
 
+    def test_help_page(self, client):
+        r = client.get("/help")
+        assert r.status_code == 200
+        html = r.data.decode()
+        assert "テンプレート変数" in html
+        assert "FAQ" in html
+        assert "アクションタイプ" in html
+
     def test_editor_page(self, client):
         r = client.get("/editor")
         assert r.status_code == 200
@@ -238,3 +419,7 @@ class TestHTMLPages:
         assert "condition.field" in html
         assert "help-icon" in html  # ツールチップアイコン
         assert "field-error" in html  # バリデーションCSS
+        assert "sidebarSearch" in html  # 検索バー
+        assert "duplicateAction" in html  # 複製ボタン
+        assert "exportConfig" in html  # エクスポート
+        assert "Ctrl" in html or "ctrl" in html.lower()  # キーボードショートカット

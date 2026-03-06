@@ -165,3 +165,63 @@ tests/
 | test_server_api.py | 21 | 0 | DryrunAPI(2) + SSE(1) + StatsDaily(1) |
 | 他テスト合計 | 28 | 7 | - |
 | **合計** | **49** | **7** | **+4テスト** |
+
+---
+
+## Phase 7-11: ヘルプ/設定管理高度化/テスト拡充/運用支援
+
+### Phase 7: ヘルプシステム + ログビューア
+
+| 項目 | 内容 |
+|---|---|
+| /help ページ | はじめかたガイド、アクションタイプ解説、テンプレート変数リファレンス表、FAQ、ショートカット一覧 |
+| ログAPI | GET /api/logs (末尾N行, レベルフィルタ, テキスト検索, 日付指定) |
+| ログパネル | ダッシュボードにトグル表示パネル、レベルフィルタ+検索 |
+
+### Phase 8: 設定管理の高度化
+
+| 項目 | 内容 |
+|---|---|
+| アクション複製 | POST /api/config/actions/<id>/duplicate + エディタに複製ボタン |
+| 削除Undo | ソフトデリート + 5秒Undoトースト (メモリバッファ方式) |
+| エクスポート | GET /api/config/export でYAMLダウンロード |
+| インポート | POST /api/config/import でYAMLから追加インポート |
+| 検索 | GET /api/config/search + エディタサイドバー検索バー |
+
+### Phase 9: インタラクション強化 (部分)
+
+| 項目 | 内容 |
+|---|---|
+| キーボードショートカット | Ctrl+S(保存), Ctrl+N(新規), /(検索), Escape(閉じる) |
+
+### Phase 10: テスト拡充
+
+| 項目 | 内容 |
+|---|---|
+| 新規テスト | Duplicate(2), Undo(2), Export/Import(4), Search(2), Health(1), Logs(2), CSV Export(1), Help HTML(1) |
+
+### Phase 11: 運用支援
+
+| 項目 | 内容 |
+|---|---|
+| 履歴CSVエクスポート | GET /api/execution-history/export |
+| ヘルスチェック | GET /api/health (アクション数/グループ数/実行状態) |
+| ログローテーション | Logger.rotate_logs(max_days=30) で古いログ自動削除 |
+| ヘルプリンク | ダッシュボード/エディタのヘッダーにヘルプリンク追加 |
+
+### テスト結果
+
+| テストファイル | passed | skipped | 新規テスト |
+|---|---|---|---|
+| test_server_api.py | 36 | 0 | +15 (Duplicate/Undo/Export/Import/Search/Health/Logs/CSV/Help) |
+| 他テスト合計 | 28 | 7 | - |
+| **合計** | **64** | **7** | **+15テスト** |
+
+### 未実装 (スコープ外に判断)
+
+- ウィザードモード (4ステップ) - エディタのガイドパネルで十分
+- URL入力ライブプレビュー - ドライランで代替可能
+- ダッシュボードコンテキストメニュー - 操作が少なく優先度低
+- ドラッグ&ドロップ並び替え - reorder APIは既存、UI側は工数対効果低
+- バックアップ管理UI - API (list_backups/restore) は既存、UI化は次回
+- ConfigManager単体テスト - サーバーAPIテスト経由で間接的にカバー済

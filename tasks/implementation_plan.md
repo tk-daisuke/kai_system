@@ -99,3 +99,35 @@
 - ドライランは独立エンドポイント (/api/dryrun/action/<id>) として実装。既存の /api/run への副作用を避ける
 - エラーガイダンスはクライアントサイドのパターンマッチで実装。サーバー側に余計なロジックを持ち込まない
 - 日別統計は stats API に daily フィールドを追加。専用APIを増やさず既存を拡張
+
+### Phase 7: ヘルプシステム + ログビューア [完了]
+- /help ルート + help.html にはじめかたガイド、アクションタイプ解説、テンプレート変数リファレンス、FAQ、ショートカット一覧
+- GET /api/logs でログファイル読み込み (レベルフィルタ + テキスト検索 + 日付指定)
+- ダッシュボードにログパネル追加 (トグル表示、レベルフィルタ、検索)
+
+#### 設計判断
+- ヘルプはSPAパターン (タブ切替) で単一ページに集約。ルーティングの複雑化を避ける
+- ログAPIはファイルを直接読み込む (SQLite等は不使用)。末尾N行の逆順読み取りでメモリ効率を確保
+
+### Phase 8: 設定管理の高度化 [完了]
+- POST /api/config/actions/<id>/duplicate でアクション複製
+- DELETE /api/config/actions/<id>/soft-delete + POST /api/config/undo で5秒Undo
+- GET /api/config/export (YAML) + POST /api/config/import (YAML)
+- GET /api/config/search でアクション・グループ横断検索
+- エディタサイドバーに検索バー追加
+
+#### 設計判断
+- Undoはサーバー側にメモリバッファ (threading.Timer) で実装。5秒後にバッファをクリア
+- インポートは既存IDとの重複は無視 (追加のみ)。破壊的マージは避ける
+- 複製はIDに `_copy` サフィックス + 重複時はカウンター付与
+
+### Phase 9: インタラクション強化 [部分完了]
+- キーボードショートカット: Ctrl+S (保存), Ctrl+N (新規), / (検索), Escape (閉じる)
+
+### Phase 10: テスト大幅拡充 [部分完了]
+- 新APIテスト15件追加: Duplicate(2), Undo(2), Export/Import(4), Search(2), Health(1), Logs(2), CSV Export(1), Help HTML(1)
+
+### Phase 11: 運用支援 [完了]
+- GET /api/execution-history/export でCSVダウンロード
+- GET /api/health ヘルスチェック (アクション数/グループ数/実行状態)
+- Logger.rotate_logs() で30日超のログファイル自動削除

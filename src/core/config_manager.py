@@ -305,6 +305,32 @@ class ConfigManager:
                 a.display_order = order_map[a.id]
         self._actions.sort(key=lambda a: a.display_order)
 
+    def duplicate_action(self, action_id: str) -> ActionConfig:
+        """アクションを複製する"""
+        if not self._loaded:
+            self.load()
+        original = None
+        for a in self._actions:
+            if a.id == action_id:
+                original = a
+                break
+        if not original:
+            raise KeyError(f"アクションが見つかりません: {action_id}")
+        data = original.to_dict()
+        # 新しいIDと名前を生成
+        base_id = action_id + "_copy"
+        new_id = base_id
+        counter = 1
+        while any(a.id == new_id for a in self._actions):
+            counter += 1
+            new_id = f"{base_id}{counter}"
+        data["id"] = new_id
+        data["name"] = data.get("name", "") + " (コピー)"
+        action = ActionConfig(data)
+        self._actions.append(action)
+        self._actions.sort(key=lambda a: a.display_order)
+        return action
+
     # ──────── グループ CRUD ────────
 
     def add_group(self, data: Dict[str, Any]) -> GroupConfig:

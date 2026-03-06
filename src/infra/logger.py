@@ -68,5 +68,22 @@ class Logger:
         self._write("SKIP", message)
 
 
+    def rotate_logs(self, max_days: int = 30) -> int:
+        """古いログファイルを削除する。削除した件数を返す"""
+        log_folder = get_log_folder()
+        cutoff = datetime.now() - __import__("datetime").timedelta(days=max_days)
+        cutoff_str = cutoff.strftime("%Y%m%d")
+        deleted = 0
+        for f in log_folder.glob("log_*.txt"):
+            date_str = f.stem.replace("log_", "")
+            if date_str < cutoff_str:
+                try:
+                    f.unlink()
+                    deleted += 1
+                except Exception:
+                    pass
+        return deleted
+
+
 # シングルトンインスタンス
 logger = Logger()

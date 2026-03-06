@@ -4,8 +4,12 @@ kai_system - Flask Web UI サーバー
 ブラウザベースのアクション管理画面を提供する
 """
 
+import csv
+import io
 import json
+import os
 import queue
+import re
 import threading
 import webbrowser
 from datetime import datetime, timedelta, timezone
@@ -15,12 +19,12 @@ from typing import Dict, List, Optional
 import yaml
 from flask import Flask, Response, jsonify, render_template, request
 
-from core.config_manager import ConfigManager
+from core.config_manager import ConfigManager, ActionConfig
 from core.action_manager import ActionManager, registry
 from core.group_manager import GroupManager
 from core.template_engine import get_template_variables, TZ_JST
 from core.param_schema import PARAM_SCHEMAS, get_action_types, get_param_schema
-from infra.logger import logger
+from infra.logger import logger, get_log_folder
 from infra.notifier import notify_webhook_task_complete
 
 
@@ -44,6 +48,10 @@ class WebServer:
         # SSE クライアント管理
         self._sse_clients: List[queue.Queue] = []
         self._sse_lock = threading.Lock()
+
+        # Undo バッファ (削除されたアクション/グループの一時保存)
+        self._undo_buffer: Optional[Dict] = None
+        self._undo_timer: Optional[threading.Timer] = None
 
         # テンプレートディレクトリ
         self.templates_dir = Path(config.config_dir) / "templates"
@@ -553,6 +561,229 @@ class WebServer:
                 "valid": len(issues) == 0,
             })
 
+        # ──────── ヘルプページ ────────
+
+        @app.route("/help")
+        def help_page():
+            return render_template("help.html")
+
+        # ──────── ログ閲覧API ────────
+
+        @app.route("/api/logs")
+        def api_logs():
+            """ログファイルの内容を返す"""
+            lines = request.args.get("lines", 100, type=int)
+            level = request.args.get("level", "")
+            search = request.args.get("search", "")
+            date = request.args.get("date", "")
+
+            log_folder = get_log_folder()
+            if date:
+                log_file = log_folder / f"log_{date}.txt"
+            else:
+                log_file = log_folder / f"log_{datetime.now().strftime('%Y%m%d')}.txt"
+
+            if not log_file.exists():
+                return jsonify({"lines": [], "available_dates": self._get_log_dates()})
+
+            try:
+                with open(log_file, "r", encoding="utf-8") as f:
+                    all_lines = f.readlines()
+
+                # フィルタリング
+                result = []
+                for line in all_lines:
+                    line = line.rstrip("\n")
+                    if level and f"[{level.upper()}]" not in line:
+                        continue
+                    if search and search.lower() not in line.lower():
+                        continue
+                    result.append(line)
+
+                # 末尾N行を返す
+                result = result[-lines:]
+                return jsonify({
+                    "lines": result,
+                    "total": len(all_lines),
+                    "available_dates": self._get_log_dates(),
+                })
+            except Exception as e:
+                return jsonify({"error": str(e)}), 500
+
+        # ──────── アクション複製API ────────
+
+        @app.route("/api/config/actions/<action_id>/duplicate", methods=["POST"])
+        def api_config_duplicate_action(action_id):
+            try:
+                self.config.backup_config()
+                new_action = self.config.duplicate_action(action_id)
+                self.config.save_actions()
+                return jsonify({"status": "ok", "action": new_action.to_dict()})
+            except KeyError as e:
+                return jsonify({"status": "error", "message": str(e)}), 404
+
+        # ──────── 削除Undo API ────────
+
+        @app.route("/api/config/actions/<action_id>/soft-delete", methods=["DELETE"])
+        def api_config_soft_delete_action(action_id):
+            """5秒間のUndo猶予付き削除"""
+            action = None
+            for a in self.config._actions:
+                if a.id == action_id:
+                    action = a
+                    break
+            if not action:
+                return jsonify({"status": "error", "message": "アクションが見つかりません"}), 404
+
+            # Undo バッファに保存
+            if self._undo_timer:
+                self._undo_timer.cancel()
+            self._undo_buffer = {"type": "action", "data": action.to_dict()}
+
+            # 実際に削除
+            self.config.backup_config()
+            self.config.delete_action(action_id)
+            self.config.save_actions()
+
+            # 5秒後にバッファをクリア
+            def clear_undo():
+                self._undo_buffer = None
+            self._undo_timer = threading.Timer(5.0, clear_undo)
+            self._undo_timer.start()
+
+            return jsonify({"status": "ok", "undo_available": True})
+
+        @app.route("/api/config/undo", methods=["POST"])
+        def api_config_undo():
+            """直前の削除を元に戻す"""
+            if not self._undo_buffer:
+                return jsonify({"status": "error", "message": "元に戻せる操作がありません"}), 404
+
+            if self._undo_timer:
+                self._undo_timer.cancel()
+                self._undo_timer = None
+
+            buf = self._undo_buffer
+            self._undo_buffer = None
+
+            if buf["type"] == "action":
+                self.config.add_action(buf["data"])
+                self.config.save_actions()
+                return jsonify({"status": "ok", "restored": buf["data"]})
+
+            return jsonify({"status": "error", "message": "不明な操作タイプ"}), 400
+
+        # ──────── 設定エクスポート/インポート ────────
+
+        @app.route("/api/config/export")
+        def api_config_export():
+            """設定をYAMLファイルとしてダウンロード"""
+            export_data = {
+                "actions": [a.to_dict() for a in self.config._actions],
+                "groups": [g.to_dict() for g in self.config._groups],
+            }
+            yaml_str = yaml.dump(export_data, allow_unicode=True, default_flow_style=False, sort_keys=False)
+            return Response(
+                yaml_str,
+                mimetype="application/x-yaml",
+                headers={"Content-Disposition": "attachment; filename=kai_system_config.yaml"},
+            )
+
+        @app.route("/api/config/import", methods=["POST"])
+        def api_config_import():
+            """YAMLファイルから設定をインポート"""
+            data = request.get_json(silent=True) or {}
+            yaml_content = data.get("yaml", "")
+            if not yaml_content:
+                return jsonify({"error": "YAMLデータが指定されていません"}), 400
+
+            try:
+                parsed = yaml.safe_load(yaml_content)
+                if not isinstance(parsed, dict):
+                    return jsonify({"error": "不正なYAML形式です"}), 400
+
+                self.config.backup_config()
+                imported = {"actions": 0, "groups": 0}
+
+                if "groups" in parsed:
+                    for g_data in parsed["groups"]:
+                        try:
+                            self.config.add_group(g_data)
+                            imported["groups"] += 1
+                        except (ValueError, KeyError):
+                            pass  # 重複は無視
+                    self.config.save_groups()
+
+                if "actions" in parsed:
+                    for a_data in parsed["actions"]:
+                        try:
+                            self.config.add_action(a_data)
+                            imported["actions"] += 1
+                        except (ValueError, KeyError):
+                            pass  # 重複は無視
+                    self.config.save_actions()
+
+                return jsonify({"status": "ok", "imported": imported})
+            except yaml.YAMLError as e:
+                return jsonify({"error": f"YAML解析エラー: {e}"}), 400
+
+        # ──────── 検索API ────────
+
+        @app.route("/api/config/search")
+        def api_config_search():
+            """アクション・グループを検索"""
+            q = request.args.get("q", "").lower().strip()
+            if not q:
+                return jsonify({"actions": [], "groups": []})
+
+            matched_actions = []
+            for a in self.config._actions:
+                if q in a.id.lower() or q in a.name.lower() or q in a.type.lower():
+                    matched_actions.append(a.to_dict())
+
+            matched_groups = []
+            for g in self.config._groups:
+                if q in g.name.lower():
+                    matched_groups.append(g.to_dict())
+
+            return jsonify({"actions": matched_actions, "groups": matched_groups})
+
+        # ──────── ヘルスチェック ────────
+
+        @app.route("/api/health")
+        def api_health():
+            return jsonify({
+                "status": "ok",
+                "timestamp": datetime.now().isoformat(),
+                "actions": len(self.config._actions),
+                "groups": len(self.config._groups),
+                "running": self.running_task is not None,
+            })
+
+        # ──────── 実行履歴CSVエクスポート ────────
+
+        @app.route("/api/execution-history/export")
+        def api_execution_history_export():
+            """実行履歴をCSVとしてダウンロード"""
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["timestamp", "action", "type", "success", "elapsed", "error"])
+            for r in self.execution_history:
+                writer.writerow([
+                    r.get("timestamp", ""),
+                    r.get("action", ""),
+                    r.get("type", ""),
+                    r.get("success", ""),
+                    r.get("elapsed", ""),
+                    r.get("error", ""),
+                ])
+            csv_str = output.getvalue()
+            return Response(
+                csv_str,
+                mimetype="text/csv",
+                headers={"Content-Disposition": "attachment; filename=execution_history.csv"},
+            )
+
         return app
 
     def _broadcast_sse(self, event_type: str, data: dict) -> None:
@@ -693,6 +924,15 @@ class WebServer:
             "by_action": by_action,
             "daily": daily,
         }
+
+    def _get_log_dates(self) -> List[str]:
+        """利用可能なログファイルの日付一覧を返す"""
+        log_folder = get_log_folder()
+        dates = []
+        for f in sorted(log_folder.glob("log_*.txt"), reverse=True):
+            date_str = f.stem.replace("log_", "")
+            dates.append(date_str)
+        return dates[:30]  # 直近30日分
 
     def _on_progress(self, current, total, message):
         self.progress_current = current
