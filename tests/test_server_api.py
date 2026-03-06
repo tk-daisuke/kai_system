@@ -116,11 +116,11 @@ class TestTemplatesAPI:
         data = json.loads(r.data)
         assert "templates" in data
         names = [t["name"] for t in data["templates"]]
-        assert "Wikipedia テーブル取得" in names
-        assert "CSS セレクタ抽出" in names
+        assert "日付入力 → CSVダウンロード" in names
+        assert "URLアクセスでCSVダウンロード" in names
 
     def test_get_template(self, client):
-        r = client.get("/api/templates/wikipedia_table")
+        r = client.get("/api/templates/browser_csv_date_only")
         assert r.status_code == 200
         data = json.loads(r.data)
         assert data["type"] == "scraper"
@@ -164,6 +164,58 @@ class TestTemplatesAPI:
         assert r.status_code == 400
 
 
+class TestDryrunAPI:
+
+    def test_dryrun_nonexistent_action(self, client):
+        r = client.post("/api/dryrun/action/nonexistent_xxx",
+                        json={},
+                        content_type="application/json")
+        assert r.status_code == 404
+
+    def test_dryrun_returns_resolved_params(self, client):
+        """ドライラン: 設定があればresolved_paramsが返る"""
+        # 最初にアクションを追加
+        client.post("/api/config/actions",
+                     json={
+                         "id": "test_dryrun",
+                         "name": "DryRunTest",
+                         "type": "shell_cmd",
+                         "group": "",
+                         "params": {"command": "echo {today}"},
+                     },
+                     content_type="application/json")
+        r = client.post("/api/dryrun/action/test_dryrun",
+                        json={"dt_from": "2026-03-05T00:00", "dt_to": "2026-03-06T00:00"},
+                        content_type="application/json")
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert "resolved_params" in data
+        assert "valid" in data
+        assert data["resolved_params"]["command"] != "echo {today}"  # 変数が展開されている
+        # クリーンアップ
+        client.delete("/api/config/actions/test_dryrun")
+
+
+class TestSSEEndpoint:
+
+    def test_sse_endpoint_exists(self, client):
+        """SSEエンドポイントが200を返す"""
+        r = client.get("/api/events")
+        assert r.status_code == 200
+        assert "text/event-stream" in r.content_type
+
+
+class TestStatsDaily:
+
+    def test_stats_has_daily(self, client):
+        r = client.get("/api/stats")
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert "daily" in data
+        # 7日分のキーがある
+        assert len(data["daily"]) == 7
+
+
 class TestHTMLPages:
 
     def test_index_page(self, client):
@@ -171,7 +223,10 @@ class TestHTMLPages:
         assert r.status_code == 200
         html = r.data.decode()
         assert "statsGrid" in html
-        assert "fetchStats" in html
+        assert "EventSource" in html  # SSE対応
+        assert "completionCard" in html  # 完了サマリー
+        assert "dryrunBtn" in html  # ドライランボタン
+        assert "welcomeGuide" in html  # ウェルカムガイド
 
     def test_editor_page(self, client):
         r = client.get("/editor")
@@ -181,3 +236,5 @@ class TestHTMLPages:
         assert "aWebhook" in html
         assert "key_value" in html
         assert "condition.field" in html
+        assert "help-icon" in html  # ツールチップアイコン
+        assert "field-error" in html  # バリデーションCSS

@@ -219,6 +219,53 @@
             font-size: 0.68rem;
             color: var(--text-muted);
             margin-top: 2px;
+            display: flex;
+            align-items: flex-start;
+            gap: 4px;
+        }
+
+        .help-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--bg-hover);
+            color: var(--accent);
+            font-size: 0.55rem;
+            font-weight: 800;
+            flex-shrink: 0;
+            cursor: help;
+            border: 1px solid rgba(124, 108, 252, .3);
+        }
+
+        .field-error {
+            border-color: #f85149 !important;
+            box-shadow: 0 0 0 2px rgba(248, 81, 73, .2) !important;
+        }
+
+        .field-error:focus {
+            border-color: #f85149 !important;
+        }
+
+        .type-guide {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            background: var(--accent-bg);
+            padding: 8px 12px;
+            border-radius: 6px;
+            border-left: 3px solid var(--accent);
+            line-height: 1.5;
+        }
+
+        .save-flash {
+            animation: saveFlash 0.6s ease;
+        }
+
+        @keyframes saveFlash {
+            0% { background: rgba(52, 211, 153, 0.3); }
+            100% { background: rgba(124, 108, 252, .15); }
         }
 
         .form-field .tz-radio {
@@ -496,6 +543,29 @@
             gap: 10px;
             justify-content: flex-end;
         }
+
+        /* モバイル対応 */
+        @media (max-width: 640px) {
+            .editor-wrap {
+                flex-direction: column;
+            }
+
+            .editor-sidebar {
+                width: 100%;
+                min-width: unset;
+                max-height: 200px;
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+            }
+
+            .editor-main {
+                padding: 16px;
+            }
+
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 
@@ -705,6 +775,7 @@
       <span class="tag tag-action">アクション</span>
       ${escHtml(a.name || '新規アクション')}
     </div>
+    ${!a.id ? '<div class="help" style="margin-bottom:12px;padding:10px 14px;background:var(--accent-bg);border-radius:8px;font-size:0.82rem;">まず「タイプ」を選んでから、各項目を入力してください。テンプレートを使うと設定がかんたんです。</div>' : ''}
     <div class="form-grid">
       <div class="form-field">
         <label>ID <span class="req">*</span></label>
@@ -717,6 +788,7 @@
       <div class="form-field">
         <label>タイプ <span class="req">*</span></label>
         <select id="aType" onchange="onTypeChange()">${typeOptions}</select>
+        <div class="help" id="aTypeDesc">${schema.description || ''}</div>
       </div>
       <div class="form-field">
         <label>グループ</label>
@@ -754,7 +826,7 @@
     </div>
     <div class="form-actions">
       <button class="btn btn-primary" onclick="saveAction('${escHtml(a.id)}')">💾 保存</button>
-      <button class="btn btn-ghost" onclick="saveAsTemplate()">📦 テンプレ保存</button>
+      <button class="btn btn-ghost" onclick="saveAsTemplate()">📦 この設定をテンプレートとして保存</button>
       ${a.id ? `<button class="btn btn-danger" onclick="confirmDelete('action', '${escHtml(a.id)}')">🗑 削除</button>` : ''}
     </div>
   `;
@@ -820,10 +892,11 @@
                     input = `<input type="text" id="p_${f.key}" value="${escHtml(String(val))}" placeholder="${escHtml(f.placeholder || '')}">`;
             }
 
-            const help = f.help ? `<div class="help">${escHtml(f.help)}</div>` : '';
-            return `<div class="form-field ${f.type === 'textarea' || f.type === 'url' || f.type === 'form_fills' ? 'full' : ''}" id="field_${f.key}" ${conditionAttr}>
+            const helpHtml = f.help ? `<div class="help"><span class="help-icon" title="${escHtml(f.help)}">?</span> ${escHtml(f.help)}</div>` : '';
+            const reqAttr = f.required ? 'data-required="true"' : '';
+            return `<div class="form-field ${f.type === 'textarea' || f.type === 'url' || f.type === 'form_fills' ? 'full' : ''}" id="field_${f.key}" ${conditionAttr} ${reqAttr}>
     <label>${escHtml(f.label)} ${req}</label>
-    ${input}${help}
+    ${input}${helpHtml}
   </div>`;
         }
 
@@ -929,7 +1002,16 @@
             const type = document.getElementById('aType').value;
             const schema = paramSchemas[type] || { fields: [] };
             document.getElementById('paramsTitle').textContent = `${schema.label || type} パラメータ`;
-            // Re-render params but keep any existing values from the current form
+            const descEl = document.getElementById('aTypeDesc');
+            if (descEl) {
+                const typeGuides = {
+                    csv_download: 'ブラウザでログインした状態でCSVをダウンロードし、Excelに自動転記します。URL内のテンプレート変数で日付を自動設定できます。',
+                    scraper: 'Webページからデータを取得します。「テーブル自動取得」が最もかんたんで、URLを指定するだけで表データを取得できます。',
+                    file_ops: 'ファイルのコピー・移動・ZIP圧縮を自動で行います。定期的なバックアップや整理に便利です。',
+                    shell_cmd: 'コマンドライン操作を自動実行します。APIからのデータ取得や、スクリプトの実行などに使えます。',
+                };
+                descEl.innerHTML = `<div class="type-guide">${typeGuides[type] || schema.description || ''}</div>`;
+            }
             const currentParams = collectParams();
             const html = schema.fields.map(f => renderParamField(f, currentParams)).join('');
             document.getElementById('paramsContainer').innerHTML = html;
@@ -1037,8 +1119,36 @@
                 params: collectParams(),
             };
 
-            if (!data.id) { showToast('IDを入力してください', 'error'); return; }
-            if (!data.name) { showToast('名前を入力してください', 'error'); return; }
+            // バリデーション（赤枠ハイライト）
+            let hasError = false;
+            document.querySelectorAll('.field-error').forEach(el => el.classList.remove('field-error'));
+
+            if (!data.id) {
+                document.getElementById('aId')?.classList.add('field-error');
+                hasError = true;
+            }
+            if (!data.name) {
+                document.getElementById('aName')?.classList.add('field-error');
+                hasError = true;
+            }
+
+            // 必須パラメータのチェック
+            const schema = paramSchemas[data.type] || { fields: [] };
+            for (const f of schema.fields) {
+                if (!f.required) continue;
+                const fieldEl = document.getElementById(`field_${f.key}`);
+                if (fieldEl && fieldEl.style.display === 'none') continue;
+                const inputEl = document.getElementById(`p_${f.key}`);
+                if (inputEl && !inputEl.value?.trim()) {
+                    inputEl.classList.add('field-error');
+                    hasError = true;
+                }
+            }
+
+            if (hasError) {
+                showToast('必須項目を入力してください', 'error');
+                return;
+            }
 
             let res;
             if (originalId === '__new__') {
@@ -1049,9 +1159,15 @@
 
             if (res.status === 'ok') {
                 showToast('アクションを保存しました');
+                // サイドバーアイテムをハイライト
                 selectedId = data.id;
                 await loadAll();
                 selectAction(data.id);
+                const sideItem = document.querySelector('.sidebar-item.active');
+                if (sideItem) {
+                    sideItem.classList.add('save-flash');
+                    setTimeout(() => sideItem.classList.remove('save-flash'), 1000);
+                }
             } else {
                 showToast(res.message || 'エラー', 'error');
             }

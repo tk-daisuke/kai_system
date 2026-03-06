@@ -1,0 +1,9 @@
+name: URLアクセスでCSVダウンロード
+description: ログイン済みブラウザで特定URLにアクセスし、CSVをダウンロードします
+type: scraper
+params:
+  mode: browser_csv
+  url: ""
+  form_fills: []
+  download_button: ""
+  download_timeout: 60

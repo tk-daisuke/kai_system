@@ -5,6 +5,7 @@ kai_system - Flask Web UI サーバー
 """
 
 import json
+import queue
 import threading
 import webbrowser
 from datetime import datetime, timedelta, timezone
@@ -12,7 +13,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import yaml
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request
 
 from core.config_manager import ConfigManager
 from core.action_manager import ActionManager, registry
@@ -39,6 +40,10 @@ class WebServer:
         self.progress_current: int = 0
         self.progress_total: int = 0
         self.history: List[Dict] = []
+
+        # SSE クライアント管理
+        self._sse_clients: List[queue.Queue] = []
+        self._sse_lock = threading.Lock()
 
         # テンプレートディレクトリ
         self.templates_dir = Path(config.config_dir) / "templates"
@@ -92,7 +97,7 @@ class WebServer:
         @app.route("/api/run/action/<action_id>", methods=["POST"])
         def api_run_action(action_id):
             if self.running_task:
-                return jsonify({"error": "別のタスクが実行中です"}), 409
+                return jsonify({"error": "現在ほかの作業を実行中です。完了するまでお待ちください"}), 409
             action = self.config.get_action_by_id(action_id)
             if not action:
                 return jsonify({"error": f"アクションが見つかりません: {action_id}"}), 404
@@ -102,18 +107,29 @@ class WebServer:
             tz_label = action.timezone.upper()
             period = self._format_period(dt_from, dt_to)
             self._add_history(f"=== {action.name} [{tz_label}] 開始 {period} ===", "info")
+            self._broadcast_sse("execution_start", {"action": action.name, "type": "action"})
 
             def run():
+                start_time = datetime.now()
                 try:
                     self.action_manager.dt_from = dt_from
                     self.action_manager.dt_to = dt_to
                     result = self.action_manager.run_action(action)
+                    elapsed = result.elapsed_str
                     if result.success:
-                        self._add_history(f"{action.name}: 完了 ({result.elapsed_str})", "success")
-                        self._record_execution(action.name, action.type, True, result.elapsed_str)
+                        self._add_history(f"{action.name}: 完了 ({elapsed})", "success")
+                        self._record_execution(action.name, action.type, True, elapsed)
+                        self._broadcast_sse("execution_complete", {
+                            "action": action.name, "success": True,
+                            "elapsed": elapsed, "message": result.message or "",
+                        })
                     else:
                         self._add_history(f"{action.name}: 失敗 - {result.error}", "error")
-                        self._record_execution(action.name, action.type, False, result.elapsed_str, result.error or "")
+                        self._record_execution(action.name, action.type, False, elapsed, result.error or "")
+                        self._broadcast_sse("execution_complete", {
+                            "action": action.name, "success": False,
+                            "elapsed": elapsed, "error": result.error or "",
+                        })
                     if action.webhook_url:
                         notify_webhook_task_complete(
                             action.webhook_url, action.name,
@@ -122,11 +138,19 @@ class WebServer:
                 except Exception as e:
                     self._add_history(f"エラー: {e}", "error")
                     self._record_execution(action.name, action.type, False, "", str(e))
+                    self._broadcast_sse("execution_complete", {
+                        "action": action.name, "success": False,
+                        "elapsed": "", "error": str(e),
+                    })
                 finally:
                     self.running_task = None
                     self.progress_message = "待機中"
                     self.action_manager.dt_from = None
                     self.action_manager.dt_to = None
+                    self._broadcast_sse("status", {
+                        "running": None,
+                        "progress": {"message": "待機中", "current": 0, "total": 0},
+                    })
 
             threading.Thread(target=run, daemon=True).start()
             return jsonify({"status": "started", "action": action.name})
@@ -134,7 +158,7 @@ class WebServer:
         @app.route("/api/run/group/<group_name>", methods=["POST"])
         def api_run_group(group_name):
             if self.running_task:
-                return jsonify({"error": "別のタスクが実行中です"}), 409
+                return jsonify({"error": "現在ほかの作業を実行中です。完了するまでお待ちください"}), 409
             actions = self.config.get_actions_by_group(group_name)
             if not actions:
                 return jsonify({"error": f"グループにアクションがありません: {group_name}"}), 404
@@ -143,24 +167,37 @@ class WebServer:
             self.running_task = f"グループ: {group_name}"
             period = self._format_period(dt_from, dt_to)
             self._add_history(f"=== {group_name} グループ実行開始 {period} ===", "info")
+            self._broadcast_sse("execution_start", {"action": group_name, "type": "group"})
 
             def run():
                 try:
                     self.action_manager.dt_from = dt_from
                     self.action_manager.dt_to = dt_to
                     results = self.action_manager.run_group(group_name)
+                    level = "success" if results["failed"] == 0 else "error"
                     self._add_history(
                         f"=== {group_name} 完了: 成功={results['success']}, "
                         f"失敗={results['failed']}, スキップ={results['skipped']} ===",
-                        "success" if results["failed"] == 0 else "error",
+                        level,
                     )
+                    self._broadcast_sse("execution_complete", {
+                        "action": group_name, "success": results["failed"] == 0,
+                        "detail": results,
+                    })
                 except Exception as e:
                     self._add_history(f"グループ実行エラー: {e}", "error")
+                    self._broadcast_sse("execution_complete", {
+                        "action": group_name, "success": False, "error": str(e),
+                    })
                 finally:
                     self.running_task = None
                     self.progress_message = "待機中"
                     self.action_manager.dt_from = None
                     self.action_manager.dt_to = None
+                    self._broadcast_sse("status", {
+                        "running": None,
+                        "progress": {"message": "待機中", "current": 0, "total": 0},
+                    })
 
             threading.Thread(target=run, daemon=True).start()
             return jsonify({"status": "started", "group": group_name})
@@ -373,14 +410,14 @@ class WebServer:
             url = data.get("url", "")
 
             if not url:
-                return jsonify({"error": "URL が指定されていません"}), 400
+                return jsonify({"error": "URLを入力してください"}), 400
             if mode not in ("auto_table", "css_selector"):
-                return jsonify({"error": "プレビューは auto_table / css_selector モードのみ対応です"}), 400
+                return jsonify({"error": "プレビュー機能は「表・テーブルを自動取得」と「ページ内の要素を指定して取得」モードでのみ使えます"}), 400
 
             if mode == "css_selector":
                 selectors = data.get("selectors", {})
                 if not selectors:
-                    return jsonify({"error": "selectors が指定されていません"}), 400
+                    return jsonify({"error": "取得したい要素（セレクタ）を指定してください"}), 400
 
             try:
                 import pandas as pd
@@ -393,7 +430,7 @@ class WebServer:
                     table_index = data.get("table_index", 0)
                     tables = pd.read_html(resp.text)
                     if not tables:
-                        return jsonify({"error": "テーブルが見つかりませんでした"}), 404
+                        return jsonify({"error": "ページ内に表（テーブル）が見つかりませんでした"}), 404
                     if table_index >= len(tables):
                         return jsonify({
                             "error": f"テーブルインデックス {table_index} が範囲外（{len(tables)}個検出）"
@@ -419,7 +456,7 @@ class WebServer:
                         max_len = max(max_len, len(texts))
 
                     if max_len == 0:
-                        return jsonify({"error": "一致する要素が見つかりませんでした"}), 404
+                        return jsonify({"error": "指定した条件に合う情報がページ内に見つかりませんでした"}), 404
 
                     # 先頭10行に制限 & 長さ揃え
                     columns = list(result.keys())
@@ -430,7 +467,7 @@ class WebServer:
                     return jsonify({"columns": columns, "rows": rows, "total_rows": max_len})
 
             except ImportError as e:
-                return jsonify({"error": f"必要なライブラリがありません: {e}"}), 500
+                return jsonify({"error": f"必要なソフトが見つかりません: {e}"}), 500
             except Exception as e:
                 logger.error(f"プレビューエラー: {e}")
                 return jsonify({"error": str(e)}), 500
@@ -454,7 +491,98 @@ class WebServer:
             except FileNotFoundError as e:
                 return jsonify({"status": "error", "message": str(e)}), 404
 
+        # ──────── SSE リアルタイムイベント ────────
+
+        @app.route("/api/events")
+        def api_events():
+            """Server-Sent Events エンドポイント"""
+            q: queue.Queue = queue.Queue()
+            with self._sse_lock:
+                self._sse_clients.append(q)
+
+            def stream():
+                try:
+                    # 接続時に現在の状態を送信
+                    self._send_sse_status(q)
+                    while True:
+                        try:
+                            event = q.get(timeout=30)
+                            yield event
+                        except queue.Empty:
+                            # keepalive
+                            yield ": keepalive\n\n"
+                except GeneratorExit:
+                    pass
+                finally:
+                    with self._sse_lock:
+                        if q in self._sse_clients:
+                            self._sse_clients.remove(q)
+
+            return Response(stream(), mimetype="text/event-stream",
+                            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+        # ──────── ドライラン API ────────
+
+        @app.route("/api/dryrun/action/<action_id>", methods=["POST"])
+        def api_dryrun_action(action_id):
+            """テスト実行: テンプレート変数展開 + バリデーションのみ"""
+            action = self.config.get_action_by_id(action_id)
+            if not action:
+                return jsonify({"error": f"アクションが見つかりません: {action_id}"}), 404
+
+            dt_from, dt_to = self._parse_datetime_range(request.get_json(silent=True))
+
+            action_tz = getattr(action, 'timezone', 'jst') or 'jst'
+            from core.template_engine import expand_params
+            resolved_params = expand_params(
+                action.params, dt_from=dt_from, dt_to=dt_to, tz_mode=action_tz
+            )
+
+            # バリデーション
+            action_class = registry.get(action.type)
+            issues = []
+            if action_class:
+                instance = action_class()
+                issues = instance.validate_params(resolved_params)
+
+            return jsonify({
+                "action": action.name,
+                "type": action.type,
+                "resolved_params": resolved_params,
+                "validation_issues": issues,
+                "valid": len(issues) == 0,
+            })
+
         return app
+
+    def _broadcast_sse(self, event_type: str, data: dict) -> None:
+        """全SSEクライアントにイベントをブロードキャスト"""
+        msg = f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+        with self._sse_lock:
+            dead = []
+            for q in self._sse_clients:
+                try:
+                    q.put_nowait(msg)
+                except queue.Full:
+                    dead.append(q)
+            for q in dead:
+                self._sse_clients.remove(q)
+
+    def _send_sse_status(self, q: queue.Queue) -> None:
+        """個別クライアントに現在の状態を送信"""
+        data = {
+            "running": self.running_task,
+            "progress": {
+                "message": self.progress_message,
+                "current": self.progress_current,
+                "total": self.progress_total,
+            },
+        }
+        msg = f"event: status\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+        try:
+            q.put_nowait(msg)
+        except queue.Full:
+            pass
 
     def _parse_datetime_range(self, data) -> tuple:
         if not data:
@@ -540,6 +668,22 @@ class WebServer:
             else:
                 by_action[name]["failed"] += 1
 
+        # 日別集計 (直近7日)
+        daily: Dict[str, Dict] = {}
+        for i in range(7):
+            day = (now - timedelta(days=6 - i)).strftime("%m/%d")
+            daily[day] = {"success": 0, "failed": 0}
+        for r in recent:
+            try:
+                day = datetime.fromisoformat(r["timestamp"]).strftime("%m/%d")
+                if day in daily:
+                    if r.get("success"):
+                        daily[day]["success"] += 1
+                    else:
+                        daily[day]["failed"] += 1
+            except (ValueError, KeyError):
+                pass
+
         return {
             "total": total,
             "success": success,
@@ -547,19 +691,28 @@ class WebServer:
             "success_rate": rate,
             "recent_7d": {"total": recent_total, "success": recent_success},
             "by_action": by_action,
+            "daily": daily,
         }
 
     def _on_progress(self, current, total, message):
         self.progress_current = current
         self.progress_total = total
         self.progress_message = message
+        self._broadcast_sse("progress", {
+            "running": self.running_task,
+            "message": message,
+            "current": current,
+            "total": total,
+        })
 
     def _add_history(self, message, level="info"):
-        self.history.append({
+        entry = {
             "time": datetime.now().strftime("%H:%M:%S"),
             "message": message, "level": level,
-        })
+        }
+        self.history.append(entry)
         logger.info(f"[HISTORY] [{level}] {message}")
+        self._broadcast_sse("history", entry)
 
     def run(self, open_browser=True):
         logger.info(f"Web UI を起動します: http://localhost:{self.port}")

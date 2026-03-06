@@ -1,4 +1,4 @@
-# Co-worker Bot プロジェクトルール
+# kai_system プロジェクトルール
 
 ## 1. コーディング規約
 
@@ -24,41 +24,62 @@
 
 ```
 src/
-├── main.py           # GUI/起動制御（エントリーポイント）
-├── config_loader.py  # Task_Master.xlsx からの設定読み込み
-├── logic_robot.py    # タスク実行ロジック（Excel操作、ダウンロード）
-├── utils.py          # 共通関数、ログ出力
-├── notifier.py       # Windows通知機能
-└── holiday_checker.py # 曜日・祝日・日付条件チェック
+├── app.py                     # エントリーポイント（Flask Web UI起動）
+├── core/
+│   ├── config_manager.py      # YAML設定管理 + webhook_url対応
+│   ├── action_base.py         # プラグイン基底クラス (ActionBase)
+│   ├── action_manager.py      # 実行管理 + プラグインレジストリ
+│   ├── group_manager.py       # グループ管理
+│   ├── param_schema.py        # パラメータスキーマ (show_when, key_value, form_fills)
+│   └── template_engine.py     # URL日付テンプレート ({today}, {from_date_jp} 等)
+├── actions/
+│   ├── csv_download.py        # CSVダウンロード + Excel転記
+│   ├── scraper.py             # スクレーピング (auto_table / css_selector / browser_csv)
+│   ├── file_ops.py            # ファイル操作 (copy / move / archive)
+│   └── shell_cmd.py           # シェルコマンド実行
+├── web/
+│   ├── server.py              # Flask Web サーバー + JSON API
+│   ├── templates/
+│   │   ├── index.html         # ダッシュボード (統計パネル + トースト通知)
+│   │   └── editor.html        # 設定エディタ (動的フォーム + テンプレート管理)
+│   └── static/style.css       # ダークテーマCSS (レスポンシブ対応)
+└── infra/
+    ├── logger.py              # クロスプラットフォームログ
+    └── notifier.py            # デスクトップ通知 + Slack/Discord Webhook
 ```
 
 ### 責務の分離
-- **main.py**: GUIとユーザーインタラクションのみ
-- **logic_robot.py**: ビジネスロジックのみ（GUI非依存）
-- **utils.py**: 汎用ユーティリティのみ
+- **app.py**: Flask起動とアクション/グループの初期化のみ
+- **core/**: ビジネスロジック（UI非依存）
+- **actions/**: ActionBase を継承したプラグイン群
+- **web/**: Flask ルーティング + API + UI テンプレート
+- **infra/**: ログ・通知などの横断的関心事
 
 ---
 
 ## 3. 設定ファイル
 
 ### パス
-| 環境 | パス |
-|------|------|
-| 本番 | `settings/production/Task_Master.xlsx` |
-| テスト | `settings/test/Task_Master.xlsx` |
+| ファイル | 用途 |
+|---------|------|
+| `config/actions.yaml` | アクション定義 |
+| `config/groups.yaml` | グループ定義 |
+| `config/templates/*.yaml` | スクレーピングテンプレート |
+| `config/execution_history.json` | 実行履歴（自動生成、500件上限） |
 
-### 列名マッピング
-日本語と英語の両方の列名をサポート（`config_loader.py` で変換）
+### テンプレート変数
+`template_engine.py` が展開する変数: `{today}`, `{from_date}`, `{to_date}`, `{today_jp}`, `{from_date_jp}`, `{to_date_jp}`, `{from_epoch}`, `{to_epoch}` 等
 
 ### バリデーション
-起動時に設定ファイルのバリデーションを行い、問題があれば警告表示
+- 各アクションの `validate()` メソッドで起動時に検証
+- param_schema.py の `show_when` で条件付きフィールドの表示を制御
 
 ---
 
 ## 4. ログ
 
 ### 出力先
-`logs/log_YYYYMMDD.txt`（日次ローテーション）
+`logs/kai_YYYYMMDD.log`（日次ローテーション）
 
 ### 形式
 ```
@@ -71,8 +92,6 @@ src/
 | INFO | 通常の処理情報 |
 | WARNING | 注意が必要な状況 |
 | ERROR | エラー発生 |
-| SUCCESS | タスク成功 |
-| SKIP | タスクスキップ |
 
 ---
 
@@ -87,41 +106,33 @@ src/
 - メソッド: `test_*`
 
 ### フレームワーク
-pytest または unittest
+pytest
 
-### カバレッジ対象（優先度順）
-1. 時間判定ロジック（`is_within_session`）
-2. 設定パース（`TaskConfig.from_row`）
-3. 条件チェック（曜日・祝日・日付）
+### テスト構成
+| ファイル | 対象 |
+|---------|------|
+| `test_scraper.py` | scraper バリデーション + モード別テスト |
+| `test_file_ops.py` | copy/move/archive + バリデーション |
+| `test_notifier.py` | Webhook ペイロード + 送信テスト |
+| `test_server_api.py` | 全API + テンプレートCRUD + HTMLレンダリング |
 
 ---
 
-## 6. ビルド・配布
+## 6. 起動方法
 
-### ビルドコマンド
-```powershell
-pyinstaller --onefile --windowed --name "Co-worker_Bot" --clean src/main.py
+```bash
+python -m src.app
+# Flask 開発サーバーが http://localhost:5000 で起動
 ```
-
-### 配布パッケージ構成
-```
-Co-worker_Bot_vX.X/
-├── Co-worker_Bot.exe      # 実行ファイル
-└── settings/
-    └── Task_Master.xlsx   # 設定ファイル（必須）
-```
-
-> **重要**: settings フォルダはexeと同階層に配置必須
 
 ---
 
 ## 7. Git運用
 
 ### コミットしないもの（.gitignoreに登録済み）
-- `settings/production/` - 本番設定（機密）
+- `config/execution_history.json` - 実行履歴
 - `logs/` - 実行ログ
 - `__pycache__/` - Pythonキャッシュ
-- `*.exe` - ビルド成果物
 - `venv/` - 仮想環境
 
 ### ブランチ戦略
@@ -129,7 +140,7 @@ Co-worker_Bot_vX.X/
 - 機能追加時: feature ブランチを作成
 
 ### コミットメッセージ
-日本語で簡潔に記載（例: `タスク待機機能を追加`）
+Conventional Commits 形式（例: `feat: テンプレート3パターン追加`）
 
 ---
 
@@ -137,7 +148,6 @@ Co-worker_Bot_vX.X/
 
 ### 保存先
 - 設計書・タスク管理ファイルは `tasks/` ディレクトリに保存する
-- GitHubで進捗・計画を追跡できるようにする
 
 ### ファイル構成
 ```
@@ -151,3 +161,13 @@ tasks/
 - 3ステップ以上の作業やアーキテクチャ決定を伴うタスクは、事前に `tasks/todo.md` に記述
 - 設計変更時は `tasks/implementation_plan.md` を更新してレビューを依頼
 - 完了時は `tasks/walkthrough.md` に結果を記録
+
+---
+
+## 9. 設計原則
+
+- 外部依存は最小限にする（notifier は urllib のみ、requests は scraper 限定）
+- テンプレートは YAML ファイル単位管理、ファイル名がID
+- UIラベル・エラーメッセージは非エンジニアにもわかる平易な日本語を使う
+- ダークテーマ + モバイルレスポンシブ対応
+- alert() は使わず、トースト通知を使う

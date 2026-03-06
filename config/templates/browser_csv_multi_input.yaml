@@ -1,0 +1,25 @@
+name: 複数項目入力 → CSVダウンロード
+description: ログイン済みブラウザで日付+その他項目を入力し、CSVをダウンロードします
+type: scraper
+params:
+  mode: browser_csv
+  url: ""
+  form_fills:
+    - selector: ""
+      action: clear_and_fill
+      value: "{from_date_jp}"
+      wait_after: 500
+    - selector: ""
+      action: clear_and_fill
+      value: "{to_date_jp}"
+      wait_after: 500
+    - selector: ""
+      action: select
+      value: ""
+      wait_after: 500
+    - selector: ""
+      action: click
+      value: ""
+      wait_after: 1000
+  download_button: ""
+  download_timeout: 60

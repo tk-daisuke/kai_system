@@ -217,7 +217,7 @@ body {
     align-items: center;
     gap: 10px;
     width: 100%;
-    padding: 10px 14px;
+    padding: 12px 16px;
     margin: 2px 0;
     background: transparent;
     border: none;
@@ -262,7 +262,7 @@ body {
 }
 
 .action-type {
-    font-size: 0.7rem;
+    font-size: 0.78rem;
     color: var(--text-muted);
     background: var(--bg-secondary);
     padding: 2px 8px;
@@ -367,7 +367,7 @@ body {
 }
 
 .filter-btn {
-    padding: 4px 10px;
+    padding: 6px 12px;
     border: none;
     border-radius: 6px;
     background: transparent;
@@ -572,6 +572,22 @@ body {
     }
 }
 
+@media (max-width: 480px) {
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .quick-btns {
+        flex-wrap: wrap;
+    }
+
+    .header {
+        flex-direction: column;
+        gap: 8px;
+        align-items: flex-start;
+    }
+}
+
 /* ---- Period Bar ---- */
 .period-bar {
     padding: 12px 16px;
@@ -647,13 +663,13 @@ body {
 }
 
 .date-quick-btn {
-    padding: 3px 10px;
+    padding: 6px 14px;
     border: 1px solid var(--border);
     border-radius: 6px;
     background: var(--bg-secondary);
     color: var(--text-muted);
     font-family: inherit;
-    font-size: 0.72rem;
+    font-size: 0.78rem;
     font-weight: 500;
     cursor: pointer;
     transition: var(--transition);
@@ -846,6 +862,270 @@ body {
 /* modal TZ accent */
 .utc-accent {
     color: #fbbf24 !important;
+}
+
+/* ---- SSE Indicator ---- */
+.sse-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--error);
+    display: inline-block;
+    transition: background 0.3s;
+}
+
+.sse-indicator.connected {
+    background: var(--success);
+    box-shadow: 0 0 6px var(--success);
+}
+
+/* ---- Welcome Guide ---- */
+.welcome-guide {
+    text-align: center;
+    padding: 48px 24px;
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    border: 1px dashed var(--border);
+}
+
+.welcome-icon {
+    font-size: 2.5rem;
+    margin-bottom: 12px;
+}
+
+.welcome-guide h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.welcome-guide p {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+}
+
+/* ---- Action Row (with last result) ---- */
+.action-row {
+    display: flex;
+    align-items: center;
+    gap: 0;
+}
+
+.action-row .action-btn {
+    flex: 1;
+}
+
+.action-last-result {
+    flex-shrink: 0;
+    padding-right: 12px;
+    font-size: 0.7rem;
+}
+
+.last-success {
+    color: var(--success);
+}
+
+.last-error {
+    color: var(--error);
+}
+
+/* ---- Elapsed Timer ---- */
+.progress-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.elapsed-timer {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    font-family: 'SF Mono', 'Consolas', monospace;
+}
+
+/* ---- Completion Card ---- */
+.completion-card {
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    overflow: hidden;
+    animation: slideDown 0.3s ease;
+}
+
+.completion-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.completion-header.success {
+    background: var(--success-bg);
+    border-bottom: 1px solid rgba(52, 211, 153, 0.2);
+}
+
+.completion-header.error {
+    background: var(--error-bg);
+    border-bottom: 1px solid rgba(248, 113, 113, 0.2);
+}
+
+.completion-icon {
+    font-size: 1.1rem;
+}
+
+.completion-title {
+    flex: 1;
+}
+
+.completion-body {
+    padding: 12px 16px;
+}
+
+.completion-detail {
+    display: block;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    padding: 2px 0;
+}
+
+.error-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.error-message {
+    font-size: 0.85rem;
+    color: var(--error);
+    word-break: break-all;
+}
+
+.error-guidance {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+}
+
+.guidance-label {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--warning);
+    margin-bottom: 4px;
+}
+
+.guidance-text {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+/* ---- Daily Chart ---- */
+.daily-chart {
+    margin: 8px 0;
+}
+
+.chart-bars {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 4px;
+    height: 60px;
+    padding: 0 4px;
+}
+
+.chart-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.chart-bar-wrap {
+    width: 100%;
+    height: 40px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 1px;
+}
+
+.chart-bar {
+    width: 100%;
+    border-radius: 2px;
+    min-height: 0;
+    transition: height 0.3s ease;
+}
+
+.chart-bar.success {
+    background: var(--success);
+    opacity: 0.7;
+}
+
+.chart-bar.failed {
+    background: var(--error);
+    opacity: 0.7;
+}
+
+.chart-label {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.chart-count {
+    font-size: 0.6rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+/* ---- Dryrun Result ---- */
+.dryrun-result {
+    margin-top: 10px;
+    padding: 10px 14px;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+    animation: slideDown 0.2s ease;
+}
+
+.dryrun-header {
+    margin-bottom: 6px;
+}
+
+.dryrun-status {
+    font-size: 0.82rem;
+    font-weight: 600;
+}
+
+.dryrun-status.success {
+    color: var(--success);
+}
+
+.dryrun-status.error {
+    color: var(--error);
+}
+
+.dryrun-params {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.dryrun-issue {
+    font-size: 0.82rem;
+    color: var(--error);
+    padding: 2px 0;
+}
+
+/* ---- History icons ---- */
+.history-icon {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    width: 16px;
+    text-align: center;
 }
 
 /* ---- Modal ---- */

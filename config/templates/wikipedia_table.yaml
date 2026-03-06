@@ -1,9 +1,0 @@
-name: Wikipedia テーブル取得
-description: Wikipedia のページからHTMLテーブルを取得する
-type: scraper
-params:
-  mode: auto_table
-  url: "https://ja.wikipedia.org/wiki/"
-  table_index: 0
-  output: "output/wiki_table.xlsx"
-  output_sheet: "Sheet1"

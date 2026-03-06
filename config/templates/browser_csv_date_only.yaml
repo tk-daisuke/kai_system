@@ -1,0 +1,17 @@
+name: 日付入力 → CSVダウンロード
+description: ログイン済みブラウザで日付を入力し、CSVをダウンロードします
+type: scraper
+params:
+  mode: browser_csv
+  url: ""
+  form_fills:
+    - selector: ""
+      action: clear_and_fill
+      value: "{from_date_jp}"
+      wait_after: 500
+    - selector: ""
+      action: clear_and_fill
+      value: "{to_date_jp}"
+      wait_after: 500
+  download_button: ""
+  download_timeout: 60
