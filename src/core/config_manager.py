@@ -84,6 +84,30 @@ class GroupConfig:
         return f"GroupConfig(name={self.name!r}, order={self.display_order})"
 
 
+class WorkflowConfig:
+    """ワークフロー (アクションの順次実行定義) を保持するクラス"""
+
+    def __init__(self, data: Dict[str, Any]):
+        self.id: str = data.get("id", "")
+        self.name: str = data.get("name", "")
+        self.description: str = data.get("description", "")
+        self.action_ids: List[str] = data.get("action_ids", [])
+        self.stop_on_error: bool = data.get("stop_on_error", True)
+        self.display_order: int = data.get("display_order", 999)
+        self.icon: str = data.get("icon", "&#9881;")
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "action_ids": self.action_ids,
+            "stop_on_error": self.stop_on_error,
+            "display_order": self.display_order,
+            "icon": self.icon,
+        }
+
+
 class ConfigManager:
     """YAML設定ファイルの管理クラス"""
 
@@ -97,6 +121,7 @@ class ConfigManager:
 
         self._actions: List[ActionConfig] = []
         self._groups: List[GroupConfig] = []
+        self._workflows: List[WorkflowConfig] = []
         self._loaded = False
 
     @property
@@ -107,14 +132,19 @@ class ConfigManager:
     def groups_file(self) -> Path:
         return self.config_dir / "groups.yaml"
 
+    @property
+    def workflows_file(self) -> Path:
+        return self.config_dir / "workflows.yaml"
+
     def load(self) -> None:
         """設定ファイルを読み込む"""
         self._load_groups()
         self._load_actions()
+        self._load_workflows()
         self._loaded = True
         logger.info(
             f"設定読み込み完了: {len(self._actions)} アクション, "
-            f"{len(self._groups)} グループ"
+            f"{len(self._groups)} グループ, {len(self._workflows)} ワークフロー"
         )
 
     def _load_actions(self) -> None:
@@ -200,6 +230,72 @@ class ConfigManager:
             if a.group not in group_names or a.group == ""
         ]
 
+    def _load_workflows(self) -> None:
+        """workflows.yaml を読み込む"""
+        if not self.workflows_file.exists():
+            self._workflows = []
+            return
+        try:
+            with open(self.workflows_file, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+            if data and "workflows" in data:
+                self._workflows = [WorkflowConfig(w) for w in data["workflows"]]
+                self._workflows.sort(key=lambda w: w.display_order)
+            else:
+                self._workflows = []
+        except Exception as e:
+            logger.error(f"ワークフロー設定の読み込みエラー: {e}")
+            self._workflows = []
+
+    def get_workflows(self) -> List[WorkflowConfig]:
+        if not self._loaded:
+            self.load()
+        return self._workflows
+
+    def get_workflow_by_id(self, workflow_id: str) -> Optional[WorkflowConfig]:
+        for w in self.get_workflows():
+            if w.id == workflow_id:
+                return w
+        return None
+
+    def save_workflows(self) -> None:
+        data = {"workflows": [w.to_dict() for w in self._workflows]}
+        self._write_yaml(self.workflows_file, data)
+        logger.info(f"ワークフロー設定を保存しました ({len(self._workflows)} 件)")
+
+    def add_workflow(self, data: Dict[str, Any]) -> WorkflowConfig:
+        if not self._loaded:
+            self.load()
+        new_id = data.get("id", "")
+        if any(w.id == new_id for w in self._workflows):
+            raise ValueError(f"ワークフローIDが重複しています: {new_id}")
+        wf = WorkflowConfig(data)
+        self._workflows.append(wf)
+        self._workflows.sort(key=lambda w: w.display_order)
+        return wf
+
+    def update_workflow(self, workflow_id: str, data: Dict[str, Any]) -> WorkflowConfig:
+        if not self._loaded:
+            self.load()
+        for i, w in enumerate(self._workflows):
+            if w.id == workflow_id:
+                new_id = data.get("id", workflow_id)
+                if new_id != workflow_id and any(x.id == new_id for x in self._workflows):
+                    raise ValueError(f"ワークフローIDが重複しています: {new_id}")
+                data.setdefault("id", workflow_id)
+                self._workflows[i] = WorkflowConfig(data)
+                self._workflows.sort(key=lambda w: w.display_order)
+                return self._workflows[i]
+        raise KeyError(f"ワークフローが見つかりません: {workflow_id}")
+
+    def delete_workflow(self, workflow_id: str) -> None:
+        if not self._loaded:
+            self.load()
+        before = len(self._workflows)
+        self._workflows = [w for w in self._workflows if w.id != workflow_id]
+        if len(self._workflows) == before:
+            raise KeyError(f"ワークフローが見つかりません: {workflow_id}")
+
     def validate(self) -> List[Dict[str, Any]]:
         """設定のバリデーションを行う"""
         issues = []
@@ -281,9 +377,10 @@ class ConfigManager:
                 new_id = data.get("id", action_id)
                 if new_id != action_id and any(x.id == new_id for x in self._actions):
                     raise ValueError(f"ID が重複しています: {new_id}")
-                self._actions[i] = ActionConfig(data)
+                new_action = ActionConfig(data)
+                self._actions[i] = new_action
                 self._actions.sort(key=lambda a: a.display_order)
-                return self._actions[i]
+                return new_action
         raise KeyError(f"アクションが見つかりません: {action_id}")
 
     def delete_action(self, action_id: str) -> None:
@@ -385,7 +482,7 @@ class ConfigManager:
         backup_dir = self.config_dir / "backups"
         backup_dir.mkdir(exist_ok=True)
 
-        for src in [self.actions_file, self.groups_file]:
+        for src in [self.actions_file, self.groups_file, self.workflows_file]:
             if src.exists():
                 dst = backup_dir / f"{src.stem}_{ts}{src.suffix}"
                 shutil.copy2(src, dst)
@@ -412,6 +509,9 @@ class ConfigManager:
 
     def restore_config(self, timestamp: str) -> None:
         """バックアップから復元"""
+        import re as _re
+        if not _re.match(r'^\d{8}_\d{6}$', timestamp):
+            raise ValueError(f"無効なタイムスタンプ形式です: {timestamp}")
         backup_dir = self.config_dir / "backups"
         restored = False
         for src_name in ["actions", "groups"]:

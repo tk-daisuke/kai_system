@@ -578,11 +578,12 @@
             <span style="color:var(--text-muted); font-size:.82rem">⚙ 設定エディタ</span>
         </div>
         <div class="editor-header-right">
+            <button class="btn btn-ghost" onclick="toggleTheme()" title="テーマ切替" id="themeToggle">&#9790;</button>
             <button class="btn btn-ghost" onclick="location.href='/'">&#8592; ダッシュボード</button>
             <button class="btn btn-ghost" onclick="location.href='/help'">? ヘルプ</button>
             <button class="btn btn-ghost" onclick="exportConfig()">&#128229; エクスポート</button>
             <button class="btn btn-ghost" onclick="showImportDialog()">&#128228; インポート</button>
-            <button class="btn btn-ghost" onclick="backupConfig()">&#128203; バックアップ</button>
+            <button class="btn btn-ghost" onclick="showBackupManager()">&#128203; バックアップ</button>
         </div>
     </div>
 
@@ -608,7 +609,13 @@
             </div>
             <div class="sidebar-divider"></div>
             <div class="sidebar-section">
-                <div class="sidebar-label">📦 テンプレート</div>
+                <div class="sidebar-label">&#9881; ワークフロー</div>
+                <div id="workflowList"></div>
+                <button class="sidebar-add-btn" onclick="newWorkflow()">+ ワークフローを追加</button>
+            </div>
+            <div class="sidebar-divider"></div>
+            <div class="sidebar-section">
+                <div class="sidebar-label">&#128230; テンプレート</div>
                 <div id="templateList"></div>
             </div>
         </div>
@@ -644,7 +651,8 @@
         let actionTypes = {};
         let paramSchemas = {};
         let templates = [];
-        let selectedType = null; // 'group' or 'action'
+        let workflows = [];
+        let selectedType = null; // 'group' or 'action' or 'workflow'
         let selectedId = null;
 
         // ===== API helpers =====
@@ -655,6 +663,21 @@
             return res.json();
         }
 
+        // ---- テーマ切替 ----
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme');
+            const next = current === 'light' ? '' : 'light';
+            document.documentElement.setAttribute('data-theme', next);
+            localStorage.setItem('kai-theme', next);
+            document.getElementById('themeToggle').innerHTML = next === 'light' ? '&#9728;' : '&#9790;';
+        }
+        (function initTheme() {
+            const saved = localStorage.getItem('kai-theme') || '';
+            if (saved) document.documentElement.setAttribute('data-theme', saved);
+            const btn = document.getElementById('themeToggle');
+            if (btn) btn.innerHTML = saved === 'light' ? '&#9728;' : '&#9790;';
+        })();
+
         function showToast(msg, type = 'success') {
             const t = document.getElementById('toast');
             t.textContent = msg;
@@ -664,17 +687,19 @@
 
         // ===== Load data =====
         async function loadAll() {
-            const [aRes, gRes, tRes, tmplRes] = await Promise.all([
+            const [aRes, gRes, tRes, tmplRes, wfRes] = await Promise.all([
                 api('/api/config/actions'),
                 api('/api/config/groups'),
                 api('/api/config/action-types'),
                 api('/api/templates'),
+                api('/api/workflows'),
             ]);
             actions = aRes.actions || [];
             groups = gRes.groups || [];
             actionTypes = tRes.types || [];
             paramSchemas = tRes.schemas || {};
             templates = tmplRes.templates || [];
+            workflows = wfRes.workflows || [];
             renderSidebar();
         }
 
@@ -701,6 +726,19 @@
     </div>
   `).join('');
 
+            // Workflows
+            const wl = document.getElementById('workflowList');
+            if (wl) {
+                wl.innerHTML = workflows.map(w => `
+    <div class="sidebar-item ${selectedType === 'workflow' && selectedId === w.id ? 'active' : ''}"
+         onclick="selectWorkflow('${escHtml(w.id)}')">
+      <span class="item-icon">${escHtml(w.icon || '&#9881;')}</span>
+      <span class="item-name">${escHtml(w.name)}</span>
+      <span class="item-badge">${w.action_ids ? w.action_ids.length : 0}件</span>
+    </div>
+  `).join('') || '<div style="padding:4px 12px;font-size:.75rem;color:var(--text-muted)">ワークフローなし</div>';
+            }
+
             // Templates
             const tl = document.getElementById('templateList');
             if (tl) {
@@ -715,6 +753,57 @@
         }
 
         function escHtml(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;'); }
+
+        // ===== Variable Picker =====
+        const TEMPLATE_VARS = [
+            {v: '{today}', d: '今日 (YYYYMMDD)'},
+            {v: '{today_jp}', d: '今日 (YYYY年MM月DD日)'},
+            {v: '{today_slash}', d: '今日 (YYYY/MM/DD)'},
+            {v: '{today_hyphen}', d: '今日 (YYYY-MM-DD)'},
+            {v: '{yesterday}', d: '昨日 (YYYYMMDD)'},
+            {v: '{yesterday_jp}', d: '昨日 (YYYY年MM月DD日)'},
+            {v: '{from_date}', d: '開始日 (YYYYMMDD)'},
+            {v: '{from_date_slash}', d: '開始日 (YYYY/MM/DD)'},
+            {v: '{to_date}', d: '終了日 (YYYYMMDD)'},
+            {v: '{to_date_slash}', d: '終了日 (YYYY/MM/DD)'},
+            {v: '{year}', d: '年 (YYYY)'},
+            {v: '{month}', d: '月 (MM)'},
+            {v: '{day}', d: '日 (DD)'},
+        ];
+
+        function toggleVarPicker(inputId) {
+            const existing = document.getElementById('varPickerDropdown');
+            if (existing) { existing.remove(); return; }
+            const input = document.getElementById(inputId);
+            if (!input) return;
+            const rect = input.parentElement.getBoundingClientRect();
+            const dd = document.createElement('div');
+            dd.id = 'varPickerDropdown';
+            dd.style.cssText = `position:fixed;top:${rect.bottom + 4}px;left:${rect.left}px;width:${Math.min(rect.width, 320)}px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow);z-index:200;max-height:260px;overflow-y:auto;`;
+            dd.innerHTML = TEMPLATE_VARS.map(tv =>
+                `<div class="var-picker-item" style="padding:6px 12px;cursor:pointer;font-size:0.82rem;display:flex;justify-content:space-between;transition:background .15s" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''" onclick="insertVar('${inputId}','${tv.v}')">
+                    <code style="color:var(--accent)">${tv.v}</code>
+                    <span style="color:var(--text-muted);font-size:0.75rem">${tv.d}</span>
+                </div>`
+            ).join('');
+            document.body.appendChild(dd);
+            setTimeout(() => document.addEventListener('click', closeVarPicker, {once: true}), 10);
+        }
+
+        function closeVarPicker(e) {
+            const dd = document.getElementById('varPickerDropdown');
+            if (dd && !dd.contains(e?.target)) dd.remove();
+        }
+
+        function insertVar(inputId, varStr) {
+            const input = document.getElementById(inputId);
+            if (!input) return;
+            const start = input.selectionStart || input.value.length;
+            input.value = input.value.slice(0, start) + varStr + input.value.slice(input.selectionEnd || start);
+            input.focus();
+            input.setSelectionRange(start + varStr.length, start + varStr.length);
+            document.getElementById('varPickerDropdown')?.remove();
+        }
 
         // ===== Select items =====
         function selectGroup(name) {
@@ -796,7 +885,7 @@
       <div class="form-field">
         <label>タイプ <span class="req">*</span></label>
         <select id="aType" onchange="onTypeChange()">${typeOptions}</select>
-        <div class="help" id="aTypeDesc">${schema.description || ''}</div>
+        <div class="help" id="aTypeDesc">${escHtml(schema.description || '')}</div>
       </div>
       <div class="form-field">
         <label>グループ</label>
@@ -898,7 +987,9 @@
                     `;
                     break;
                 default:
-                    input = `<input type="text" id="p_${f.key}" value="${escHtml(String(val))}" placeholder="${escHtml(f.placeholder || '')}">`;
+                    const showVarPicker = f.key === 'url' || f.key === 'command' || f.key === 'source' || f.key === 'destination';
+                    const varBtn = showVarPicker ? `<button type="button" class="btn btn-ghost btn-sm var-picker-btn" onclick="toggleVarPicker('p_${f.key}')" title="テンプレート変数を挿入" style="padding:4px 8px;font-size:0.78rem;position:absolute;right:4px;top:50%;transform:translateY(-50%)">{x}</button>` : '';
+                    input = `<div style="position:relative">${varBtn}<input type="text" id="p_${f.key}" value="${escHtml(String(val))}" placeholder="${escHtml(f.placeholder || '')}" style="${showVarPicker ? 'padding-right:42px' : ''}"></div>`;
             }
 
             const helpHtml = f.help ? `<div class="help"><span class="help-icon" title="${escHtml(f.help)}">?</span> ${escHtml(f.help)}</div>` : '';
@@ -1019,7 +1110,7 @@
                     file_ops: 'ファイルのコピー・移動・ZIP圧縮を自動で行います。定期的なバックアップや整理に便利です。',
                     shell_cmd: 'コマンドライン操作を自動実行します。APIからのデータ取得や、スクリプトの実行などに使えます。',
                 };
-                descEl.innerHTML = `<div class="type-guide">${typeGuides[type] || schema.description || ''}</div>`;
+                descEl.innerHTML = `<div class="type-guide">${escHtml(typeGuides[type] || schema.description || '')}</div>`;
             }
             const currentParams = collectParams();
             const html = schema.fields.map(f => renderParamField(f, currentParams)).join('');
@@ -1250,7 +1341,8 @@
         function confirmDelete(type, id) {
             pendingDeleteType = type;
             pendingDeleteId = id;
-            document.getElementById('confirmTitle').textContent = `${type === 'group' ? 'グループ' : 'アクション'}を削除`;
+            const typeLabel = { group: 'グループ', action: 'アクション', workflow: 'ワークフロー' };
+            document.getElementById('confirmTitle').textContent = `${typeLabel[type] || 'アクション'}を削除`;
             document.getElementById('confirmMessage').textContent =
                 `「${id}」を削除してもよろしいですか？この操作は元に戻せません（バックアップは自動作成されます）。`;
             document.getElementById('confirmOk').onclick = doDelete;
@@ -1264,10 +1356,15 @@
         async function doDelete() {
             closeConfirm();
             if (pendingDeleteType === 'action') {
-                // Undo付きソフトデリート
                 await softDeleteAction(pendingDeleteId);
             } else {
-                const res = await api(`/api/config/groups/${encodeURIComponent(pendingDeleteId)}`, 'DELETE');
+                let url;
+                if (pendingDeleteType === 'workflow') {
+                    url = `/api/workflows/${encodeURIComponent(pendingDeleteId)}`;
+                } else {
+                    url = `/api/config/groups/${encodeURIComponent(pendingDeleteId)}`;
+                }
+                const res = await api(url, 'DELETE');
                 if (res.status === 'ok') {
                     showToast('削除しました');
                     selectedType = null;
@@ -1287,6 +1384,167 @@
             const res = await api('/api/config/backup', 'POST');
             if (res.status === 'ok') {
                 showToast(`バックアップ作成: ${res.timestamp}`);
+            }
+        }
+
+        async function showBackupManager() {
+            const res = await api('/api/backups');
+            const backups = res.backups || [];
+            let html = '<div style="max-height:300px;overflow-y:auto">';
+            if (backups.length === 0) {
+                html += '<p style="color:var(--text-muted);text-align:center;padding:20px">バックアップがありません</p>';
+            } else {
+                backups.forEach(b => {
+                    html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:6px;margin:4px 0" class="sidebar-item">
+                        <span style="font-size:0.82rem;font-family:monospace">${escapeHtml(b.label)}</span>
+                        <button class="btn btn-sm btn-primary" onclick="restoreBackup('${escapeHtml(b.timestamp)}')">復元</button>
+                    </div>`;
+                });
+            }
+            html += '</div>';
+            const overlay = document.createElement('div');
+            overlay.className = 'modal-overlay';
+            overlay.id = 'backupModal';
+            overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+            overlay.innerHTML = `<div class="modal" style="max-width:500px">
+                <div class="modal-header"><h3>バックアップ管理</h3>
+                    <button class="btn btn-ghost" onclick="document.getElementById('backupModal').remove()">&#10005;</button></div>
+                <div class="modal-body">
+                    <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+                        <button class="btn btn-sm btn-primary" onclick="backupConfig();document.getElementById('backupModal').remove()">新規バックアップ作成</button>
+                    </div>
+                    ${html}
+                </div>
+            </div>`;
+            document.body.appendChild(overlay);
+        }
+
+        async function restoreBackup(timestamp) {
+            if (!confirm('この時点の設定に復元しますか? 現在の設定は上書きされます。')) return;
+            const res = await api(`/api/backups/${timestamp}/restore`, 'POST');
+            if (res.status === 'ok') {
+                showToast('バックアップから復元しました');
+                document.getElementById('backupModal')?.remove();
+                loadData();
+            } else {
+                showToast(res.error || 'エラー', 'error');
+            }
+        }
+
+        // ===== Workflow =====
+        function selectWorkflow(id) {
+            selectedType = 'workflow';
+            selectedId = id;
+            renderSidebar();
+            const w = workflows.find(x => x.id === id);
+            if (w) renderWorkflowForm(w);
+        }
+
+        function newWorkflow() {
+            selectedType = 'workflow';
+            selectedId = '__new__';
+            renderSidebar();
+            renderWorkflowForm({
+                id: '', name: '', description: '',
+                action_ids: [], stop_on_error: true,
+                display_order: workflows.length + 1,
+                icon: '&#9881;',
+            });
+        }
+
+        function renderWorkflowForm(wf) {
+            const actionCheckboxes = actions.map(a => {
+                const checked = (wf.action_ids || []).includes(a.id) ? 'checked' : '';
+                const order = (wf.action_ids || []).indexOf(a.id);
+                return `
+                    <label class="wf-action-item" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:.82rem;" data-action-id="${escHtml(a.id)}" data-order="${order >= 0 ? order : 999}">
+                        <input type="checkbox" class="wf-action-check" value="${escHtml(a.id)}" ${checked}>
+                        <span>${escHtml(a.icon || '&#9654;')}</span>
+                        <span style="flex:1">${escHtml(a.name)}</span>
+                        <span style="font-size:.68rem;color:var(--text-muted)">${escHtml(a.type)}</span>
+                    </label>
+                `;
+            }).join('');
+
+            document.getElementById('editorMain').innerHTML = `
+    <div class="form-title">
+      <span class="tag" style="background:rgba(251,191,36,.15);color:#fbbf24;">ワークフロー</span>
+      ${escHtml(wf.name || '新規ワークフロー')}
+    </div>
+    <div class="form-grid">
+      <div class="form-field">
+        <label>ID <span class="req">*</span></label>
+        <input type="text" id="wfId" value="${escHtml(wf.id)}" placeholder="例: daily_report">
+      </div>
+      <div class="form-field">
+        <label>名前 <span class="req">*</span></label>
+        <input type="text" id="wfName" value="${escHtml(wf.name)}" placeholder="例: 日次レポート一括処理">
+      </div>
+      <div class="form-field full">
+        <label>説明</label>
+        <input type="text" id="wfDesc" value="${escHtml(wf.description || '')}" placeholder="ワークフローの説明（任意）">
+      </div>
+      <div class="form-field">
+        <label>アイコン</label>
+        <input type="text" id="wfIcon" value="${escHtml(wf.icon || '&#9881;')}" style="width:60px">
+      </div>
+      <div class="form-field">
+        <label>表示順</label>
+        <input type="number" id="wfOrder" value="${wf.display_order}" min="1">
+      </div>
+      <div class="form-field full">
+        <label style="flex-direction:row;gap:6px">
+          <input type="checkbox" id="wfStopOnError" ${wf.stop_on_error !== false ? 'checked' : ''}> エラー時に中断する
+        </label>
+        <div class="help">チェックすると、1つのアクションが失敗した時点でワークフローを停止します</div>
+      </div>
+      <div class="form-section-title">実行するアクション（チェックした順に実行）</div>
+      <div class="form-field full" id="wfActionList">
+        ${actionCheckboxes || '<div style="color:var(--text-muted);font-size:.82rem">アクションが登録されていません</div>'}
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="saveWorkflow('${escHtml(wf.id || '__new__')}')">&#128190; 保存</button>
+      ${wf.id && wf.id !== '__new__' ? `<button class="btn btn-danger" onclick="confirmDelete('workflow', '${escHtml(wf.id)}')">&#128465; 削除</button>` : ''}
+    </div>
+  `;
+        }
+
+        async function saveWorkflow(originalId) {
+            const id = document.getElementById('wfId').value.trim();
+            const name = document.getElementById('wfName').value.trim();
+            if (!id || !name) { showToast('IDと名前を入力してください', 'error'); return; }
+
+            // チェックされたアクションのIDを順序通りに取得
+            const actionIds = [];
+            document.querySelectorAll('.wf-action-check:checked').forEach(cb => {
+                actionIds.push(cb.value);
+            });
+
+            const data = {
+                id: id,
+                name: name,
+                description: document.getElementById('wfDesc').value.trim(),
+                icon: document.getElementById('wfIcon').value.trim() || '&#9881;',
+                display_order: parseInt(document.getElementById('wfOrder').value) || 999,
+                stop_on_error: document.getElementById('wfStopOnError').checked,
+                action_ids: actionIds,
+            };
+
+            let res;
+            if (originalId === '__new__') {
+                res = await api('/api/workflows', 'POST', data);
+            } else {
+                res = await api(`/api/workflows/${encodeURIComponent(originalId)}`, 'PUT', data);
+            }
+
+            if (res.status === 'ok') {
+                showToast('ワークフローを保存しました');
+                selectedId = data.id;
+                await loadAll();
+                selectWorkflow(data.id);
+            } else {
+                showToast(res.message || 'エラー', 'error');
             }
         }
 

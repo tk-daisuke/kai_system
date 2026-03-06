@@ -1,0 +1,8 @@
+workflows:
+- id: ''
+  name: Updated
+  description: updated
+  action_ids: []
+  stop_on_error: false
+  display_order: 999
+  icon: '&#9881;'

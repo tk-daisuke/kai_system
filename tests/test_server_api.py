@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+import yaml
 
 import actions.csv_download  # noqa: F401
 import actions.scraper  # noqa: F401
@@ -389,6 +390,155 @@ class TestExecutionHistoryExport:
         assert b"timestamp" in r.data  # CSVヘッダー
 
 
+class TestWorkflowAPI:
+
+    def test_workflow_crud(self, client):
+        """ワークフロー作成・取得・更新・削除"""
+        # 作成
+        r = client.post("/api/workflows",
+                        json={"id": "wf_test", "name": "TestWorkflow",
+                              "description": "test", "action_ids": [],
+                              "stop_on_error": True},
+                        content_type="application/json")
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert data["status"] == "ok"
+
+        # 一覧取得
+        r = client.get("/api/workflows")
+        assert r.status_code == 200
+        wfs = json.loads(r.data)["workflows"]
+        assert any(w["id"] == "wf_test" for w in wfs)
+
+        # 更新
+        r = client.put("/api/workflows/wf_test",
+                       json={"name": "Updated", "description": "updated",
+                             "action_ids": [], "stop_on_error": False},
+                       content_type="application/json")
+        assert r.status_code == 200
+
+        # 削除
+        r = client.delete("/api/workflows/wf_test")
+        assert r.status_code == 200
+
+        # 削除確認
+        r = client.get("/api/workflows")
+        wfs = json.loads(r.data)["workflows"]
+        assert all(w["id"] != "wf_test" for w in wfs)
+
+    def test_workflow_delete_nonexistent(self, client):
+        r = client.delete("/api/workflows/nonexistent_xxx")
+        assert r.status_code == 404
+
+    def test_run_workflow_empty(self, client):
+        """空のワークフロー実行はエラー"""
+        client.post("/api/workflows",
+                    json={"id": "wf_empty", "name": "Empty",
+                          "action_ids": ["nonexistent_action"],
+                          "stop_on_error": True},
+                    content_type="application/json")
+        r = client.post("/api/run/workflow/wf_empty",
+                        json={},
+                        content_type="application/json")
+        assert r.status_code == 400
+        # クリーンアップ
+        client.delete("/api/workflows/wf_empty")
+
+    def test_run_workflow_nonexistent(self, client):
+        r = client.post("/api/run/workflow/nonexistent_xxx",
+                        json={},
+                        content_type="application/json")
+        assert r.status_code == 404
+
+    def test_export_includes_workflows(self, client):
+        """エクスポートにworkflowsが含まれる"""
+        r = client.get("/api/config/export")
+        assert r.status_code == 200
+        data = yaml.safe_load(r.data)
+        assert "workflows" in data
+
+
+class TestBulkToggleAPI:
+
+    def test_bulk_toggle(self, client):
+        """バルク有効/無効切替"""
+        # テスト用アクション作成
+        client.post("/api/config/actions",
+                     json={"id": "bulk1", "name": "Bulk1", "type": "shell_cmd",
+                           "group": "", "params": {}},
+                     content_type="application/json")
+        client.post("/api/config/actions",
+                     json={"id": "bulk2", "name": "Bulk2", "type": "shell_cmd",
+                           "group": "", "params": {}},
+                     content_type="application/json")
+        # 無効化
+        r = client.post("/api/config/actions/bulk-toggle",
+                        json={"action_ids": ["bulk1", "bulk2"], "enabled": False},
+                        content_type="application/json")
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert data["updated"] == 2
+        # クリーンアップ
+        client.delete("/api/config/actions/bulk1")
+        client.delete("/api/config/actions/bulk2")
+
+    def test_bulk_toggle_empty(self, client):
+        r = client.post("/api/config/actions/bulk-toggle",
+                        json={},
+                        content_type="application/json")
+        assert r.status_code == 400
+
+
+class TestAPIDocsEndpoint:
+
+    def test_api_docs(self, client):
+        r = client.get("/api/docs")
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert "endpoints" in data
+        paths = [e["path"] for e in data["endpoints"]]
+        assert "/api/health" in paths
+        assert "/api/status" in paths
+
+
+class TestBackupAPI:
+
+    def test_list_backups(self, client):
+        r = client.get("/api/backups")
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert "backups" in data
+
+    def test_restore_invalid_timestamp(self, client):
+        r = client.post("/api/backups/invalid_ts/restore",
+                        content_type="application/json")
+        assert r.status_code == 400
+
+    def test_restore_nonexistent(self, client):
+        r = client.post("/api/backups/99991231_235959/restore",
+                        content_type="application/json")
+        assert r.status_code == 400
+
+
+class TestTemplateVariablesAPI:
+
+    def test_list_variables(self, client):
+        r = client.get("/api/template-variables")
+        assert r.status_code == 200
+        data = json.loads(r.data)
+        assert "variables" in data
+        var_names = [v["var"] for v in data["variables"]]
+        assert "{today}" in var_names
+        assert "{from_date}" in var_names
+
+
+class TestExecutionHistoryDetailAPI:
+
+    def test_detail_out_of_range(self, client):
+        r = client.get("/api/execution-history/99999")
+        assert r.status_code == 404
+
+
 class TestHTMLPages:
 
     def test_index_page(self, client):
@@ -400,6 +550,7 @@ class TestHTMLPages:
         assert "completionCard" in html  # 完了サマリー
         assert "dryrunBtn" in html  # ドライランボタン
         assert "welcomeGuide" in html  # ウェルカムガイド
+        assert "toggleTheme" in html  # テーマ切替
 
     def test_help_page(self, client):
         r = client.get("/help")
@@ -423,3 +574,6 @@ class TestHTMLPages:
         assert "duplicateAction" in html  # 複製ボタン
         assert "exportConfig" in html  # エクスポート
         assert "Ctrl" in html or "ctrl" in html.lower()  # キーボードショートカット
+        assert "toggleVarPicker" in html  # 変数ピッカー
+        assert "showBackupManager" in html  # バックアップ管理
+        assert "toggleTheme" in html  # テーマ切替

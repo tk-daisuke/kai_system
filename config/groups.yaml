@@ -1,18 +1,13 @@
-# kai_system グループ定義
-# 表示順 (display_order) で並び替えられる
-
 groups:
-  - name: 午前業務
-    display_order: 1
-    color: "#4CAF50"
-    icon: "🌅"
-
-  - name: 午後業務
-    display_order: 2
-    color: "#2196F3"
-    icon: "☀️"
-
-  - name: 夕方業務
-    display_order: 3
-    color: "#FF9800"
-    icon: "🌆"
+- name: 午前業務
+  display_order: 1
+  color: '#4CAF50'
+  icon: 🌅
+- name: 午後業務
+  display_order: 2
+  color: '#2196F3'
+  icon: ☀️
+- name: 夕方業務
+  display_order: 3
+  color: '#FF9800'
+  icon: 🌆

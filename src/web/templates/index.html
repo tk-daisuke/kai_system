@@ -21,6 +21,7 @@
                 <span class="sse-indicator" id="sseIndicator" title="リアルタイム接続"></span>
             </div>
             <div class="header-right">
+                <button class="btn btn-ghost" onclick="toggleTheme()" title="テーマ切替" id="themeToggle">&#9790;</button>
                 <button class="btn btn-ghost" onclick="location.href='/help'" title="ヘルプ">?</button>
                 <button class="btn btn-ghost" onclick="location.href='/editor'" title="設定エディタ">&#9881;</button>
                 <button class="btn btn-ghost" onclick="reloadConfig()" title="設定を再読み込み">&#128260;</button>
@@ -83,6 +84,14 @@
                         <button class="btn btn-primary" onclick="location.href='/editor'">&#9881; 設定エディタを開く</button>
                     </div>
                 </div>
+            </section>
+
+            <!-- ワークフローパネル -->
+            <section class="panel" id="workflowPanel" style="display:none;">
+                <div class="panel-header">
+                    <h2>&#9881; ワークフロー</h2>
+                </div>
+                <div id="workflowContainer"></div>
             </section>
 
             <section class="panel progress-panel" id="progressPanel" style="display:none;">
@@ -236,6 +245,21 @@
         let elapsedInterval = null;
         let eventSource = null;
 
+        // ---- テーマ切替 ----
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme');
+            const next = current === 'light' ? '' : 'light';
+            document.documentElement.setAttribute('data-theme', next);
+            localStorage.setItem('kai-theme', next);
+            document.getElementById('themeToggle').innerHTML = next === 'light' ? '&#9728;' : '&#9790;';
+        }
+        (function initTheme() {
+            const saved = localStorage.getItem('kai-theme') || '';
+            if (saved) document.documentElement.setAttribute('data-theme', saved);
+            const btn = document.getElementById('themeToggle');
+            if (btn) btn.innerHTML = saved === 'light' ? '&#9728;' : '&#9790;';
+        })();
+
         // ---- トースト ----
         function showToast(message, type = 'info') {
             const container = document.getElementById('toastContainer');
@@ -243,7 +267,7 @@
             const icons = { info: '\u2139\uFE0F', success: '\u2705', error: '\u274C', warning: '\u26A0\uFE0F' };
             const colors = { info: 'var(--accent)', success: 'var(--success)', error: 'var(--error)', warning: 'var(--warning)' };
             toast.style.cssText = `background:var(--bg-card);border:1px solid ${colors[type] || colors.info};border-radius:8px;padding:12px 20px;color:var(--text-primary);font-size:0.85rem;box-shadow:0 4px 16px rgba(0,0,0,0.3);animation:slideDown 0.3s ease;max-width:360px;display:flex;gap:8px;align-items:center;`;
-            toast.innerHTML = `<span>${icons[type] || ''}</span><span>${message}</span>`;
+            toast.innerHTML = `<span>${icons[type] || ''}</span><span>${escapeHtml(message)}</span>`;
             container.appendChild(toast);
             setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, 4000);
         }
@@ -526,12 +550,32 @@
                 const res = await fetch('/api/status');
                 const data = await res.json();
                 renderGroups(data.groups);
+                renderWorkflows(data.workflows);
                 updateProgress(data.running, data.progress);
                 updateHistory(data.history);
                 if (document.getElementById('templateVars').children.length === 0) {
                     renderTemplateVars(data.template_vars);
                 }
             } catch (e) { }
+        }
+
+        function renderWorkflows(workflows) {
+            const panel = document.getElementById('workflowPanel');
+            const container = document.getElementById('workflowContainer');
+            if (!workflows || workflows.length === 0) {
+                panel.style.display = 'none';
+                return;
+            }
+            panel.style.display = 'block';
+            container.innerHTML = workflows.map(wf => `
+                <div class="action-row" style="padding:4px 8px;">
+                    <button class="action-btn" onclick="showConfirm('workflow','${escapeHtml(wf.id)}','${escapeHtml(wf.name)}','jst')" title="${escapeHtml(wf.description || '')}">
+                        <span class="action-icon">${escapeHtml(wf.icon || '&#9881;')}</span>
+                        <span class="action-name">${escapeHtml(wf.name)}</span>
+                        <span class="action-type">${wf.action_ids.length}件</span>
+                    </button>
+                </div>
+            `).join('');
         }
 
         function renderGroups(groups) {
@@ -618,8 +662,8 @@
         // ---- モーダル ----
         async function showConfirm(type, id, name, actionTz) {
             pendingExecution = { type, id, name, actionTz };
-            document.getElementById('modalTitle').textContent =
-                (type === 'group' ? 'グループ実行: ' : 'アクション実行: ') + name;
+            const typeLabels = { group: 'グループ実行: ', workflow: 'ワークフロー実行: ', action: 'アクション実行: ' };
+            document.getElementById('modalTitle').textContent = (typeLabels[type] || 'アクション実行: ') + name;
 
             document.getElementById('modalFrom').textContent = getDtFrom().replace('T', ' ') + ' JST';
             document.getElementById('modalTo').textContent = getDtTo().replace('T', ' ') + ' JST';
@@ -630,7 +674,7 @@
             document.getElementById('modalTz').textContent = tzLabel;
             document.getElementById('modalTz').className = 'modal-value' + (actionTz === 'utc' ? ' utc-accent' : '');
 
-            // ドライランボタン表示（アクション実行時のみ）
+            // ドライランボタン表示（アクション実行時のみ、ワークフロー/グループでは非表示）
             document.getElementById('dryrunBtn').style.display = type === 'action' ? 'inline-flex' : 'none';
             document.getElementById('dryrunResult').style.display = 'none';
 
@@ -711,9 +755,10 @@
             closeModal();
 
             const body = { dt_from: getDtFrom(), dt_to: getDtTo() };
-            const url = type === 'group'
-                ? `/api/run/group/${encodeURIComponent(id)}`
-                : `/api/run/action/${id}`;
+            let url;
+            if (type === 'group') url = `/api/run/group/${encodeURIComponent(id)}`;
+            else if (type === 'workflow') url = `/api/run/workflow/${encodeURIComponent(id)}`;
+            else url = `/api/run/action/${id}`;
 
             try {
                 const res = await fetch(url, {
@@ -785,8 +830,8 @@
             list.innerHTML = [...filtered].reverse().map(h => `
                 <div class="history-item ${h.level}">
                     <span class="history-icon">${levelIcons[h.level] || ''}</span>
-                    <span class="history-time">${h.time}</span>
-                    <span class="history-msg">${h.message}</span>
+                    <span class="history-time">${escapeHtml(h.time)}</span>
+                    <span class="history-msg">${escapeHtml(h.message)}</span>
                 </div>
             `).join('');
         }

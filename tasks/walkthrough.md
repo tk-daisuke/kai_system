@@ -220,8 +220,71 @@ tests/
 ### 未実装 (スコープ外に判断)
 
 - ウィザードモード (4ステップ) - エディタのガイドパネルで十分
-- URL入力ライブプレビュー - ドライランで代替可能
 - ダッシュボードコンテキストメニュー - 操作が少なく優先度低
 - ドラッグ&ドロップ並び替え - reorder APIは既存、UI側は工数対効果低
-- バックアップ管理UI - API (list_backups/restore) は既存、UI化は次回
-- ConfigManager単体テスト - サーバーAPIテスト経由で間接的にカバー済
+
+---
+
+## Phase 12-16: ワークフロー / UI強化 / テスト拡充 / 拡張機能
+
+### Phase 12: ワークフロー機能
+
+| 項目 | 内容 |
+|---|---|
+| WorkflowConfig | id, name, description, action_ids, stop_on_error, display_order, icon |
+| CRUD API | GET/POST /api/workflows, PUT/DELETE /api/workflows/<id> |
+| 実行API | POST /api/run/workflow/<id> - 選択アクションを順次実行 |
+| ダッシュボードUI | ワークフローパネル + 実行ボタン |
+| エディタUI | ワークフロー編集フォーム + アクション選択チェックボックス |
+| バグ修正 | update_workflow でIDが消える問題 (setdefault追加) |
+
+### Phase 13: Visual UI強化
+
+| 項目 | 内容 |
+|---|---|
+| テーマ切替 | ダーク/ライト切替、CSS変数でライトテーマ定義、localStorage保存 |
+| 変数ピッカー | URL/コマンド/ソース/デスティネーションフィールドに{x}ボタン |
+| バックアップ管理UI | モーダルでバックアップ一覧+復元+新規作成 |
+| テンプレート変数API | GET /api/template-variables (13種の変数一覧) |
+| 履歴詳細API | GET /api/execution-history/<index> |
+
+### Phase 14: セキュリティ + コード品質
+
+| 項目 | 内容 |
+|---|---|
+| パストラバーサル防止 | template_id, log date, backup timestamp にバリデーション |
+| XSS防止 | showToast, 履歴表示でescapeHtml使用 |
+| update_actionバグ修正 | ソート後のインデックスずれ (返値を変数保持) |
+
+### Phase 15: テスト拡充
+
+| 項目 | 内容 |
+|---|---|
+| ConfigManager単体 | 29テスト (Load/Query/CRUD/Persistence/Backup/DataClass) |
+| Backup API | 3テスト (一覧/不正タイムスタンプ/存在しないバックアップ) |
+| Template Variables | 1テスト |
+| 履歴詳細 | 1テスト |
+
+### Phase 16: 拡張機能
+
+| 項目 | 内容 |
+|---|---|
+| バルク有効/無効切替 | POST /api/config/actions/bulk-toggle |
+| APIドキュメント | GET /api/docs (全エンドポイント自動列挙) |
+
+### テスト結果
+
+| テストファイル | passed | skipped | 新規テスト |
+|---|---|---|---|
+| test_config_manager.py | 29 | 0 | 新規 (ConfigManager単体) |
+| test_server_api.py | 49 | 0 | +13 (Workflow/Backup/Bulk/Docs/Variables/Detail) |
+| test_scraper.py | 7 | 7 | - |
+| test_file_ops.py | 10 | 0 | - |
+| test_notifier.py | 11 | 0 | - |
+| 合計 | 106 | 7 | +42テスト |
+
+### ハマったポイント
+
+- update_workflow で data に id が含まれない場合、WorkflowConfig の id が空になる -> setdefault で解決
+- update_action の返値がソート後のインデックスで別のアクションを返していた -> 変数に保持して返すよう修正
+- バックアップ復元テストのパストラバーサル: Flask のルーティングが `../` を含むURLを404にするため、テストの入力値を修正

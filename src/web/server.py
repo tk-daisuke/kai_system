@@ -19,7 +19,7 @@ from typing import Dict, List, Optional
 import yaml
 from flask import Flask, Response, jsonify, render_template, request
 
-from core.config_manager import ConfigManager, ActionConfig
+from core.config_manager import ConfigManager, ActionConfig, WorkflowConfig
 from core.action_manager import ActionManager, registry
 from core.group_manager import GroupManager
 from core.template_engine import get_template_variables, TZ_JST
@@ -90,8 +90,11 @@ class WebServer:
                     "color": g.color, "actions": actions,
                 })
 
+            workflows = [w.to_dict() for w in self.config.get_workflows()]
+
             return jsonify({
                 "groups": groups,
+                "workflows": workflows,
                 "running": self.running_task,
                 "progress": {
                     "message": self.progress_message,
@@ -346,6 +349,8 @@ class WebServer:
 
         @app.route("/api/templates/<template_id>", methods=["GET"])
         def api_template_get(template_id):
+            if not re.match(r'^[a-zA-Z0-9_-]+$', template_id):
+                return jsonify({"error": "無効なテンプレートIDです"}), 400
             filepath = self.templates_dir / f"{template_id}.yaml"
             if not filepath.exists():
                 return jsonify({"error": "テンプレートが見つかりません"}), 404
@@ -388,6 +393,8 @@ class WebServer:
 
         @app.route("/api/templates/<template_id>", methods=["DELETE"])
         def api_template_delete(template_id):
+            if not re.match(r'^[a-zA-Z0-9_-]+$', template_id):
+                return jsonify({"error": "無効なテンプレートIDです"}), 400
             filepath = self.templates_dir / f"{template_id}.yaml"
             if not filepath.exists():
                 return jsonify({"error": "テンプレートが見つかりません"}), 404
@@ -436,6 +443,8 @@ class WebServer:
 
                 if mode == "auto_table":
                     table_index = data.get("table_index", 0)
+                    if not isinstance(table_index, int) or table_index < 0:
+                        return jsonify({"error": "テーブルインデックスが無効です"}), 400
                     tables = pd.read_html(resp.text)
                     if not tables:
                         return jsonify({"error": "ページ内に表（テーブル）が見つかりませんでした"}), 404
@@ -561,6 +570,129 @@ class WebServer:
                 "valid": len(issues) == 0,
             })
 
+        # ──────── ワークフロー CRUD + 実行 API ────────
+
+        @app.route("/api/workflows", methods=["GET"])
+        def api_workflows_list():
+            workflows = [w.to_dict() for w in self.config.get_workflows()]
+            return jsonify({"workflows": workflows})
+
+        @app.route("/api/workflows", methods=["POST"])
+        def api_workflows_add():
+            data = request.get_json(silent=True) or {}
+            try:
+                self.config.backup_config()
+                wf = self.config.add_workflow(data)
+                self.config.save_workflows()
+                return jsonify({"status": "ok", "workflow": wf.to_dict()})
+            except (ValueError, KeyError) as e:
+                return jsonify({"status": "error", "message": str(e)}), 400
+
+        @app.route("/api/workflows/<wf_id>", methods=["PUT"])
+        def api_workflows_update(wf_id):
+            data = request.get_json(silent=True) or {}
+            try:
+                self.config.backup_config()
+                wf = self.config.update_workflow(wf_id, data)
+                self.config.save_workflows()
+                return jsonify({"status": "ok", "workflow": wf.to_dict()})
+            except (ValueError, KeyError) as e:
+                return jsonify({"status": "error", "message": str(e)}), 400
+
+        @app.route("/api/workflows/<wf_id>", methods=["DELETE"])
+        def api_workflows_delete(wf_id):
+            try:
+                self.config.backup_config()
+                self.config.delete_workflow(wf_id)
+                self.config.save_workflows()
+                return jsonify({"status": "ok"})
+            except KeyError as e:
+                return jsonify({"status": "error", "message": str(e)}), 404
+
+        @app.route("/api/run/workflow/<wf_id>", methods=["POST"])
+        def api_run_workflow(wf_id):
+            """ワークフロー実行: 指定順序でアクションを順次実行"""
+            if self.running_task:
+                return jsonify({"error": "現在ほかの作業を実行中です。完了するまでお待ちください"}), 409
+            wf = self.config.get_workflow_by_id(wf_id)
+            if not wf:
+                return jsonify({"error": f"ワークフローが見つかりません: {wf_id}"}), 404
+
+            # アクションの存在確認
+            actions = []
+            for aid in wf.action_ids:
+                a = self.config.get_action_by_id(aid)
+                if a:
+                    actions.append(a)
+
+            if not actions:
+                return jsonify({"error": "ワークフローに有効なアクションがありません"}), 400
+
+            dt_from, dt_to = self._parse_datetime_range(request.get_json(silent=True))
+            self.running_task = f"WF: {wf.name}"
+            self._add_history(f"=== ワークフロー「{wf.name}」開始 ({len(actions)}件) ===", "info")
+            self._broadcast_sse("execution_start", {"action": wf.name, "type": "workflow"})
+
+            def run():
+                results = {"success": 0, "failed": 0, "skipped": 0}
+                try:
+                    self.action_manager.dt_from = dt_from
+                    self.action_manager.dt_to = dt_to
+                    for i, action in enumerate(actions, 1):
+                        if not action.enabled:
+                            results["skipped"] += 1
+                            continue
+                        self._broadcast_sse("progress", {
+                            "running": self.running_task,
+                            "message": f"({i}/{len(actions)}) {action.name}",
+                            "current": i, "total": len(actions),
+                        })
+                        result = self.action_manager.run_action(action)
+                        if result.success:
+                            results["success"] += 1
+                            self._add_history(f"  {action.name}: 完了 ({result.elapsed_str})", "success")
+                            self._record_execution(action.name, action.type, True, result.elapsed_str)
+                        else:
+                            results["failed"] += 1
+                            self._add_history(f"  {action.name}: 失敗 - {result.error}", "error")
+                            self._record_execution(action.name, action.type, False, result.elapsed_str, result.error or "")
+                            if wf.stop_on_error:
+                                self._add_history(f"  エラーのためワークフローを中断しました", "warning")
+                                break
+                        if action.webhook_url:
+                            notify_webhook_task_complete(
+                                action.webhook_url, action.name,
+                                result.success, result.message, result.elapsed_str
+                            )
+
+                    level = "success" if results["failed"] == 0 else "error"
+                    self._add_history(
+                        f"=== ワークフロー「{wf.name}」完了: 成功={results['success']}, "
+                        f"失敗={results['failed']}, スキップ={results['skipped']} ===",
+                        level,
+                    )
+                    self._broadcast_sse("execution_complete", {
+                        "action": wf.name, "success": results["failed"] == 0,
+                        "detail": results,
+                    })
+                except Exception as e:
+                    self._add_history(f"ワークフロー実行エラー: {e}", "error")
+                    self._broadcast_sse("execution_complete", {
+                        "action": wf.name, "success": False, "error": str(e),
+                    })
+                finally:
+                    self.running_task = None
+                    self.progress_message = "待機中"
+                    self.action_manager.dt_from = None
+                    self.action_manager.dt_to = None
+                    self._broadcast_sse("status", {
+                        "running": None,
+                        "progress": {"message": "待機中", "current": 0, "total": 0},
+                    })
+
+            threading.Thread(target=run, daemon=True).start()
+            return jsonify({"status": "started", "workflow": wf.name, "action_count": len(actions)})
+
         # ──────── ヘルプページ ────────
 
         @app.route("/help")
@@ -579,6 +711,8 @@ class WebServer:
 
             log_folder = get_log_folder()
             if date:
+                if not re.match(r'^\d{8}$', date):
+                    return jsonify({"error": "無効な日付形式です"}), 400
                 log_file = log_folder / f"log_{date}.txt"
             else:
                 log_file = log_folder / f"log_{datetime.now().strftime('%Y%m%d')}.txt"
@@ -681,6 +815,7 @@ class WebServer:
             export_data = {
                 "actions": [a.to_dict() for a in self.config._actions],
                 "groups": [g.to_dict() for g in self.config._groups],
+                "workflows": [w.to_dict() for w in self.config._workflows],
             }
             yaml_str = yaml.dump(export_data, allow_unicode=True, default_flow_style=False, sort_keys=False)
             return Response(
@@ -703,7 +838,7 @@ class WebServer:
                     return jsonify({"error": "不正なYAML形式です"}), 400
 
                 self.config.backup_config()
-                imported = {"actions": 0, "groups": 0}
+                imported = {"actions": 0, "groups": 0, "workflows": 0}
 
                 if "groups" in parsed:
                     for g_data in parsed["groups"]:
@@ -722,6 +857,15 @@ class WebServer:
                         except (ValueError, KeyError):
                             pass  # 重複は無視
                     self.config.save_actions()
+
+                if "workflows" in parsed:
+                    for w_data in parsed["workflows"]:
+                        try:
+                            self.config.add_workflow(w_data)
+                            imported["workflows"] += 1
+                        except (ValueError, KeyError):
+                            pass
+                    self.config.save_workflows()
 
                 return jsonify({"status": "ok", "imported": imported})
             except yaml.YAMLError as e:
@@ -759,6 +903,94 @@ class WebServer:
                 "groups": len(self.config._groups),
                 "running": self.running_task is not None,
             })
+
+        # ──────── バルク操作API ────────
+
+        @app.route("/api/config/actions/bulk-toggle", methods=["POST"])
+        def api_config_bulk_toggle():
+            """複数アクションの有効/無効を一括切替"""
+            data = request.get_json(silent=True) or {}
+            action_ids = data.get("action_ids", [])
+            enabled = data.get("enabled", True)
+            if not action_ids or not isinstance(action_ids, list):
+                return jsonify({"error": "action_idsが指定されていません"}), 400
+
+            self.config.backup_config()
+            count = 0
+            for a in self.config._actions:
+                if a.id in action_ids:
+                    a.enabled = bool(enabled)
+                    count += 1
+            self.config.save_actions()
+            return jsonify({"status": "ok", "updated": count})
+
+        # ──────── APIドキュメント ────────
+
+        @app.route("/api/docs")
+        def api_docs():
+            """APIエンドポイント一覧をJSON返却"""
+            endpoints = []
+            for rule in app.url_map.iter_rules():
+                if rule.endpoint == 'static':
+                    continue
+                methods = sorted(rule.methods - {'OPTIONS', 'HEAD'})
+                if methods:
+                    endpoints.append({
+                        "path": str(rule.rule),
+                        "methods": methods,
+                        "endpoint": rule.endpoint,
+                    })
+            endpoints.sort(key=lambda x: x["path"])
+            return jsonify({"endpoints": endpoints})
+
+        # ──────── バックアップ管理API ────────
+
+        @app.route("/api/backups")
+        def api_backups():
+            """バックアップ一覧を返す"""
+            return jsonify({"backups": self.config.list_backups()})
+
+        @app.route("/api/backups/<timestamp>/restore", methods=["POST"])
+        def api_backup_restore(timestamp):
+            """バックアップから復元"""
+            try:
+                self.config.restore_config(timestamp)
+                return jsonify({"status": "ok", "message": f"バックアップ {timestamp} から復元しました"})
+            except (ValueError, FileNotFoundError) as e:
+                return jsonify({"error": str(e)}), 400
+
+        # ──────── テンプレート変数一覧API ────────
+
+        @app.route("/api/template-variables")
+        def api_template_variables():
+            """利用可能なテンプレート変数の一覧"""
+            variables = [
+                {"var": "{today}", "desc": "今日の日付 (YYYYMMDD)"},
+                {"var": "{today_jp}", "desc": "今日の日付 (YYYY年MM月DD日)"},
+                {"var": "{today_slash}", "desc": "今日の日付 (YYYY/MM/DD)"},
+                {"var": "{today_hyphen}", "desc": "今日の日付 (YYYY-MM-DD)"},
+                {"var": "{yesterday}", "desc": "昨日の日付 (YYYYMMDD)"},
+                {"var": "{yesterday_jp}", "desc": "昨日の日付 (YYYY年MM月DD日)"},
+                {"var": "{from_date}", "desc": "開始日 (YYYYMMDD)"},
+                {"var": "{from_date_jp}", "desc": "開始日 (YYYY年MM月DD日)"},
+                {"var": "{from_date_slash}", "desc": "開始日 (YYYY/MM/DD)"},
+                {"var": "{to_date}", "desc": "終了日 (YYYYMMDD)"},
+                {"var": "{to_date_jp}", "desc": "終了日 (YYYY年MM月DD日)"},
+                {"var": "{to_date_slash}", "desc": "終了日 (YYYY/MM/DD)"},
+                {"var": "{year}", "desc": "今年 (YYYY)"},
+                {"var": "{month}", "desc": "今月 (MM)"},
+                {"var": "{day}", "desc": "今日 (DD)"},
+            ]
+            return jsonify({"variables": variables})
+
+        # ──────── 実行履歴詳細API ────────
+
+        @app.route("/api/execution-history/<int:index>")
+        def api_execution_history_detail(index):
+            """実行履歴の詳細を返す"""
+            if 0 <= index < len(self.execution_history):
+                return jsonify(self.execution_history[index])
+            return jsonify({"error": "履歴が見つかりません"}), 404
 
         # ──────── 実行履歴CSVエクスポート ────────
 
